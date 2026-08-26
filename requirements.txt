@@ -1,0 +1,14 @@
+# --- Étapes 0 & 1 : squelette + upload ---
+fastapi>=0.115
+uvicorn[standard]>=0.34
+jinja2>=3.1
+python-multipart>=0.0.18
+pydantic-settings>=2.7
+python-dotenv>=1.0
+
+# --- Étapes suivantes (ajoutées au fur et à mesure) ---
+# groq>=0.13                     # étape 2 & 3 : transcription + résumé
+# google-api-python-client>=2.0  # étape 4 : archivage Google Drive
+# google-auth-oauthlib>=1.2      # étape 4 : OAuth Drive
+# mega.py                        # étape 4 : archivage MEGA (fichiers volumineux)
+# libsql-experimental>=0.1       # étape 6 : bascule SQLite -> Turso (déploiement)

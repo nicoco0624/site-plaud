@@ -1,0 +1,5 @@
+{% if error %}
+  <p class="alert error">❌ {{ error }}</p>
+{% elif note %}
+  <p class="alert ok">✅ « {{ note.original_filename }} » reçu ({{ note.size_bytes | human_size }}) — statut : {{ note.status }}</p>
+{% endif %}

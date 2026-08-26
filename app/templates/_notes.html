@@ -1,0 +1,19 @@
+{% if not notes %}
+  <p class="muted">Aucune note pour l'instant.</p>
+{% else %}
+  <table class="notes">
+    <thead>
+      <tr><th>Fichier</th><th>Taille</th><th>Statut</th><th>Créée</th></tr>
+    </thead>
+    <tbody>
+      {% for n in notes %}
+      <tr>
+        <td>{{ n.original_filename }}</td>
+        <td>{{ n.size_bytes | human_size }}</td>
+        <td><span class="badge badge-{{ n.status }}">{{ n.status }}</span></td>
+        <td>{{ n.created_at.replace("T", " ") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endif %}

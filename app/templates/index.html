@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+  <h2>Nouvel enregistrement</h2>
+
+  <form id="upload-form"
+        hx-post="/upload"
+        hx-encoding="multipart/form-data"
+        hx-target="#upload-result"
+        hx-swap="innerHTML"
+        hx-on::after-request="if(event.detail.successful) this.reset()">
+    <label id="dropzone" for="file-input">
+      <strong>Glisse un fichier audio ici</strong>
+      <span>ou clique pour parcourir</span>
+      <em>mp3, wav, m4a — {{ max_upload_mb }} Mo max</em>
+    </label>
+    <input id="file-input" type="file" name="file" accept=".mp3,.wav,.m4a,audio/*" required>
+    <button type="submit">Envoyer</button>
+  </form>
+
+  <div id="upload-result" aria-live="polite"></div>
+</section>
+
+<section class="card">
+  <h2>Notes</h2>
+  <div id="notes"
+       hx-get="/notes"
+       hx-trigger="load, refreshNotes from:body"
+       hx-swap="innerHTML">
+    <p class="muted">Chargement…</p>
+  </div>
+</section>
+
+<script>
+  // Retour visuel du drag & drop.
+  const dz = document.getElementById('dropzone');
+  const input = document.getElementById('file-input');
+  ['dragenter', 'dragover'].forEach(evt =>
+    dz.addEventListener(evt, e => { e.preventDefault(); dz.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(evt =>
+    dz.addEventListener(evt, e => { e.preventDefault(); dz.classList.remove('over'); }));
+  dz.addEventListener('drop', e => {
+    if (e.dataTransfer.files.length) {
+      input.files = e.dataTransfer.files;
+      dz.querySelector('strong').textContent = e.dataTransfer.files[0].name;
+    }
+  });
+  input.addEventListener('change', () => {
+    if (input.files.length) dz.querySelector('strong').textContent = input.files[0].name;
+  });
+</script>
+{% endblock %}
