@@ -123,15 +123,15 @@ def run_archive(note_id: str) -> None:
             {"provider": "gdrive", **drive.upload_file(p, parent_id=folder_id)}
             for p in to_drive
         ]
-    except drive.DriveNotAuthorized as exc:
-        # Le contenu (transcription/résumé) reste accessible ; on n'échoue pas la
-        # note, on signale juste que l'archivage attend l'autorisation Google.
-        log.warning("archivage %s en attente : %s", note_id, exc)
-        db.update_note(note_id, status=db.STATUS_DONE, error=f"Archivage : {exc}")
-        return
     except Exception as exc:  # noqa: BLE001
-        log.exception("archivage échoué pour %s", note_id)
-        db.update_note(note_id, status=db.STATUS_ERROR, error=f"Archivage : {exc}")
+        # Archivage non bloquant : la transcription et le résumé restent
+        # accessibles, et l'email doit quand même partir. On note juste le souci.
+        if isinstance(exc, drive.DriveNotAuthorized):
+            log.warning("archivage %s en attente : %s", note_id, exc)
+        else:
+            log.exception("archivage échoué pour %s", note_id)
+        db.update_note(note_id, status=db.STATUS_DONE, error=f"Archivage : {exc}")
+        run_email(note_id)
         return
 
     if audio_oversized:
@@ -160,16 +160,19 @@ def run_email(note_id: str) -> None:
     note = db.get_note(note_id)
     if not note:
         return
+    # On garde une éventuelle alerte d'archivage : l'email ne doit pas l'effacer.
+    prior_error = note["error"]
+
     if not get_settings().email_enabled:
         db.update_note(
             note_id,
-            error=note["error"]
+            error=prior_error
             or "Email : non configuré (SMTP_USER / SMTP_PASSWORD / MAIL_TO).",
         )
         log.info("note %s : email désactivé, envoi ignoré", note_id)
         return
 
-    db.update_note(note_id, status=db.STATUS_SENDING, error=None)
+    db.update_note(note_id, status=db.STATUS_SENDING)
     try:
         to = mailer.send_note_email(db.get_note(note_id))
     except Exception as exc:  # noqa: BLE001
@@ -181,6 +184,6 @@ def run_email(note_id: str) -> None:
         note_id,
         status=db.STATUS_SENT,
         emailed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        error=None,
+        error=prior_error,
     )
     log.info("note %s : email envoyé à %s", note_id, to)

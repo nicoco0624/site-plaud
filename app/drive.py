@@ -26,6 +26,11 @@ SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 _FOLDER_MIME = "application/vnd.google-apps.folder"
 
 
+def _q(value: str) -> str:
+    """Échappe une valeur pour la syntaxe de requête Drive (`name = '...'`)."""
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
 class DriveNotAuthorized(RuntimeError):
     pass
 
@@ -74,7 +79,7 @@ def ensure_folder(name: str, parent_id: str | None = None) -> str:
     """Renvoie l'id du dossier `name` (créé s'il n'existe pas déjà)."""
     svc = _service()
     q = (
-        f"name = '{name}' and mimeType = '{_FOLDER_MIME}' and trashed = false"
+        f"name = '{_q(name)}' and mimeType = '{_FOLDER_MIME}' and trashed = false"
         + (f" and '{parent_id}' in parents" if parent_id else "")
     )
     hits = svc.files().list(q=q, fields="files(id)", pageSize=1).execute().get("files", [])
