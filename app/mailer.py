@@ -132,6 +132,9 @@ def _send_resend(settings, subject, text, html, atts) -> str:
         headers={
             "Authorization": f"Bearer {settings.resend_api_key}",
             "Content-Type": "application/json",
+            # Sans User-Agent réaliste, Cloudflare devant l'API renvoie 403 (1010).
+            "User-Agent": "SitePlaud/1.0 (+https://github.com/nicoco0624/site-plaud)",
+            "Accept": "application/json",
         },
     )
     try:
