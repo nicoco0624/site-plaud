@@ -1,13 +1,3 @@
----
-title: Site Plaud
-emoji: 🎙️
-colorFrom: blue
-colorTo: purple
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # Site Plaud
 
 Clone auto-hébergé de Plaud : on **upload un audio**, il est **transcrit**,
@@ -36,9 +26,11 @@ cp .env.example .env      # puis remplir les valeurs
 .venv/bin/uvicorn app.main:app --reload --port 8000
 ```
 
-## Déploiement (Hugging Face Spaces)
+## Déploiement (Render, offre gratuite)
 
-Space de type **Docker**. Les secrets (`GROQ_API_KEY`, `B2_*`, `SMTP_*`,
-`DATABASE_URL`, `TURSO_AUTH_TOKEN`, `PUBLIC_BASE_URL`) se règlent dans
-**Settings → Variables and secrets**, jamais dans le dépôt. Voir `.env.example`
-pour la liste complète.
+Service **Web** de type **Docker**, créé depuis un dépôt Git public. Les
+variables d'environnement (`GROQ_API_KEY`, `B2_*`, `SMTP_*`, `DATABASE_URL`,
+`TURSO_AUTH_TOKEN`, `PUBLIC_BASE_URL`) se règlent dans **Environment**, jamais
+dans le dépôt. Voir `.env.example` et `render.yaml` pour la liste complète.
+L'offre gratuite met le service en veille après 15 min d'inactivité (réveil en
+~30 s à la visite suivante).

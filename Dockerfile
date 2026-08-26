@@ -1,4 +1,4 @@
-# Image de déploiement — Hugging Face Spaces (SDK: docker).
+# Image de déploiement (Render / tout hébergeur Docker).
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY --chown=user:user . .
 USER user
 
-# Port applicatif déclaré dans le frontmatter du README (app_port: 7860).
+# L'hébergeur fournit $PORT (Render : 10000). 7860 par défaut en local.
+ENV PORT=7860
 EXPOSE 7860
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]

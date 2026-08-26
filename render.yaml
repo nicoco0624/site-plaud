@@ -1,0 +1,35 @@
+# Blueprint Render (facultatif). Le service peut aussi être créé à la main
+# depuis le dashboard en pointant sur le dépôt Git public.
+services:
+  - type: web
+    name: site-plaud
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: false
+    envVars:
+      # Valeurs à renseigner dans le dashboard Render (Environment) :
+      - key: DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ARCHIVE_BACKEND
+        value: b2
+      - key: B2_KEY_ID
+        sync: false
+      - key: B2_APP_KEY
+        sync: false
+      - key: B2_BUCKET
+        sync: false
+      - key: B2_ENDPOINT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: MAIL_TO
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
