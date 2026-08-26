@@ -16,8 +16,15 @@ class Settings(BaseSettings):
 
     app_name: str = "Site Plaud"
     upload_dir: str = "uploads"
+    # sqlite:///chemin  -> fichier local (dev)
+    # libsql://xxx.turso.io ou https://xxx.turso.io -> Turso (+ turso_auth_token)
     database_url: str = "sqlite:///data/plaud.db"
+    turso_auth_token: str = ""
     max_upload_mb: int = 200
+
+    @property
+    def db_backend(self) -> str:
+        return "turso" if self.database_url.startswith(("libsql://", "https://")) else "sqlite"
 
     # --- Groq (étapes 2 & 3) ---
     groq_api_key: str = ""
@@ -99,14 +106,9 @@ class Settings(BaseSettings):
 
     @property
     def sqlite_path(self) -> Path:
-        """Chemin du fichier SQLite déduit de database_url (schéma sqlite:/// en dev)."""
+        """Chemin du fichier SQLite local (utilisé quand db_backend == 'sqlite')."""
         prefix = "sqlite:///"
-        if not self.database_url.startswith(prefix):
-            raise ValueError(
-                "En dev, DATABASE_URL doit commencer par 'sqlite:///'. "
-                "La bascule Turso arrive à l'étape 6."
-            )
-        raw = self.database_url[len(prefix):]
+        raw = self.database_url[len(prefix):] if self.database_url.startswith(prefix) else "data/plaud.db"
         p = Path(raw)
         return p if p.is_absolute() else BASE_DIR / p
 

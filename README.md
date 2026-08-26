@@ -1,7 +1,44 @@
+---
+title: Site Plaud
+emoji: 🎙️
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Site Plaud
 
-Projet de site web.
+Clone auto-hébergé de Plaud : on **upload un audio**, il est **transcrit**,
+**résumé par une IA**, **archivé en ligne**, puis **envoyé par email**.
 
-## Statut
+Pipeline : `upload → transcription → résumé → archivage → email`, entièrement
+en tâches de fond, suivi en direct dans le navigateur.
 
-Initialisé le 2026-08-26. Stack et structure à définir.
+## Stack (100 % gratuit)
+
+| Rôle | Techno |
+|---|---|
+| Backend | FastAPI + Jinja2 + HTMX |
+| Transcription | Groq `whisper-large-v3-turbo` |
+| Résumé | Groq `openai/gpt-oss-120b` |
+| Archivage | Backblaze B2 (compatible S3) — Google Drive en option locale |
+| Email | SMTP Gmail (mot de passe d'application) |
+| Base de données | SQLite en local · Turso (libSQL) en ligne |
+| Tâches asynchrones | FastAPI BackgroundTasks |
+
+## Lancer en local
+
+```bash
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env      # puis remplir les valeurs
+.venv/bin/uvicorn app.main:app --reload --port 8000
+```
+
+## Déploiement (Hugging Face Spaces)
+
+Space de type **Docker**. Les secrets (`GROQ_API_KEY`, `B2_*`, `SMTP_*`,
+`DATABASE_URL`, `TURSO_AUTH_TOKEN`, `PUBLIC_BASE_URL`) se règlent dans
+**Settings → Variables and secrets**, jamais dans le dépôt. Voir `.env.example`
+pour la liste complète.

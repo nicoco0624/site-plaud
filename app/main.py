@@ -107,20 +107,29 @@ def note_row(request: Request, note_id: str):
     )
 
 
-@app.get("/notes/{note_id}/transcript", response_class=PlainTextResponse)
+def _serve_text_artifact(note: dict, path_key: str, archived_name: str):
+    """Sert un fichier texte local ; s'il a disparu (disque éphémère après
+    redémarrage), redirige vers la copie archivée."""
+    rel = note[path_key]
+    if not rel:
+        raise HTTPException(status_code=409, detail="Pas encore disponible")
+    local = BASE_DIR / rel
+    if local.exists():
+        return PlainTextResponse(local.read_text(encoding="utf-8"))
+    links = json.loads(note["archive_links"] or "[]")
+    if any(l.get("name") == archived_name for l in links):
+        return RedirectResponse(f"/notes/{note['id']}/dl/{archived_name}")
+    raise HTTPException(status_code=410, detail="Fichier non disponible")
+
+
+@app.get("/notes/{note_id}/transcript")
 def note_transcript(note_id: str):
-    note = _note_or_404(note_id)
-    if not note["transcript_path"]:
-        raise HTTPException(status_code=409, detail="Transcription pas encore disponible")
-    return (BASE_DIR / note["transcript_path"]).read_text(encoding="utf-8")
+    return _serve_text_artifact(_note_or_404(note_id), "transcript_path", "transcript.txt")
 
 
-@app.get("/notes/{note_id}/summary", response_class=PlainTextResponse)
+@app.get("/notes/{note_id}/summary")
 def note_summary(note_id: str):
-    note = _note_or_404(note_id)
-    if not note["summary_path"]:
-        raise HTTPException(status_code=409, detail="Résumé pas encore disponible")
-    return (BASE_DIR / note["summary_path"]).read_text(encoding="utf-8")
+    return _serve_text_artifact(_note_or_404(note_id), "summary_path", "summary.md")
 
 
 @app.get("/notes/{note_id}/dl/{name}")

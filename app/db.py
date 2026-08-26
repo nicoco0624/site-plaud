@@ -1,13 +1,23 @@
-"""Accès SQLite (bibliothèque standard).
+"""Accès base de données.
 
-Volontairement minimaliste : une seule table `notes`. À l'étape 6, cette couche
-sera adaptée pour parler à Turso (libSQL) sans changer le reste de l'app.
+Deux backends, choisis d'après DATABASE_URL :
+  - ``sqlite:///chemin``            -> fichier SQLite local (stdlib, dev)
+  - ``libsql://xxx.turso.io`` /     -> Turso via son API HTTP « pipeline »
+    ``https://xxx.turso.io``           (+ TURSO_AUTH_TOKEN), aucune dépendance native
+
+Une seule table : ``notes``. Les fonctions publiques (create_note, get_note,
+list_notes, update_note, init_db) renvoient / acceptent des dicts, quel que soit
+le backend.
 """
 
+from __future__ import annotations
+
+import json
 import sqlite3
-from collections.abc import Iterator
-from contextlib import contextmanager
+import urllib.request
 from datetime import datetime, timezone
+from functools import lru_cache
+from pathlib import Path
 
 from app.config import get_settings
 
@@ -23,7 +33,7 @@ STATUS_SENDING = "sending"
 STATUS_SENT = "sent"
 STATUS_ERROR = "error"
 
-_SCHEMA = """
+_CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS notes (
     id                TEXT PRIMARY KEY,
     created_at        TEXT NOT NULL,
@@ -41,14 +51,14 @@ CREATE TABLE IF NOT EXISTS notes (
     archived_at       TEXT,
     drive_folder_link TEXT,
     emailed_at        TEXT
-);
+)
 """
 
-# Colonnes ajoutées après coup : (nom, définition SQL). Appliquées si absentes,
-# pour ne pas casser une base déjà créée par une version antérieure.
+# Colonnes ajoutées après coup : (nom, type). Appliquées si absentes, pour ne pas
+# casser une base créée par une version antérieure.
 _MIGRATIONS = [
     ("title", "TEXT"),
-    ("archive_links", "TEXT"),  # JSON : [{"provider","name","link"}, ...]
+    ("archive_links", "TEXT"),  # JSON : [{"provider","name","key"/"link"}, ...]
     ("archived_at", "TEXT"),
     ("drive_folder_link", "TEXT"),
     ("emailed_at", "TEXT"),
@@ -59,26 +69,112 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-@contextmanager
-def get_conn() -> Iterator[sqlite3.Connection]:
-    settings = get_settings()
-    settings.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(settings.sqlite_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+# --------------------------------------------------------------------------- #
+#  Backends
+# --------------------------------------------------------------------------- #
 
+class _SqliteBackend:
+    def __init__(self, path):
+        self.path = str(path)
+        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+
+    def query(self, sql: str, params: tuple = ()) -> list[dict]:
+        conn = sqlite3.connect(self.path)
+        conn.row_factory = sqlite3.Row
+        try:
+            cur = conn.execute(sql, params)
+            rows = [dict(r) for r in cur.fetchall()] if cur.description else []
+            conn.commit()
+            return rows
+        finally:
+            conn.close()
+
+
+class _TursoBackend:
+    def __init__(self, url: str, token: str):
+        host = url.replace("libsql://", "https://").rstrip("/")
+        self.endpoint = f"{host}/v2/pipeline"
+        self.token = token
+
+    @staticmethod
+    def _tag(v):
+        if v is None:
+            return {"type": "null"}
+        if isinstance(v, bool):
+            return {"type": "integer", "value": str(int(v))}
+        if isinstance(v, int):
+            return {"type": "integer", "value": str(v)}
+        if isinstance(v, float):
+            return {"type": "float", "value": v}
+        return {"type": "text", "value": str(v)}
+
+    @staticmethod
+    def _untag(cell):
+        t = cell.get("type")
+        if t == "null":
+            return None
+        v = cell.get("value")
+        if t == "integer":
+            return int(v)
+        if t == "float":
+            return float(v)
+        return v  # text / blob (base64) laissés en l'état
+
+    def query(self, sql: str, params: tuple = ()) -> list[dict]:
+        body = {
+            "requests": [
+                {"type": "execute",
+                 "stmt": {"sql": sql, "args": [self._tag(p) for p in params]}},
+                {"type": "close"},
+            ]
+        }
+        req = urllib.request.Request(
+            self.endpoint,
+            method="POST",
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.token}",
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=30) as r:
+            payload = json.load(r)
+
+        res = payload["results"][0]
+        if res.get("type") != "ok":
+            raise RuntimeError(f"Turso: {res.get('error')}")
+        result = res["response"]["result"]
+        cols = [c["name"] for c in result["cols"]]
+        return [
+            {col: self._untag(cell) for col, cell in zip(cols, row)}
+            for row in result["rows"]
+        ]
+
+
+@lru_cache
+def _backend():
+    s = get_settings()
+    if s.db_backend == "turso":
+        if not s.turso_auth_token:
+            raise RuntimeError("DATABASE_URL pointe vers Turso mais TURSO_AUTH_TOKEN est vide.")
+        return _TursoBackend(s.database_url, s.turso_auth_token)
+    return _SqliteBackend(s.sqlite_path)
+
+
+def _q(sql: str, params: tuple = ()) -> list[dict]:
+    return _backend().query(sql, params)
+
+
+# --------------------------------------------------------------------------- #
+#  API publique
+# --------------------------------------------------------------------------- #
 
 def init_db() -> None:
-    with get_conn() as conn:
-        conn.executescript(_SCHEMA)
-        existing = {row["name"] for row in conn.execute("PRAGMA table_info(notes)")}
-        for name, ddl in _MIGRATIONS:
-            if name not in existing:
-                conn.execute(f"ALTER TABLE notes ADD COLUMN {name} {ddl}")
+    _q(_CREATE_TABLE)
+    existing = {r["name"] for r in _q("PRAGMA table_info(notes)")}
+    for name, ddl in _MIGRATIONS:
+        if name not in existing:
+            _q(f"ALTER TABLE notes ADD COLUMN {name} {ddl}")
 
 
 def create_note(
@@ -91,31 +187,25 @@ def create_note(
     status: str = STATUS_UPLOADED,
 ) -> dict:
     ts = _now()
-    with get_conn() as conn:
-        conn.execute(
-            """
-            INSERT INTO notes (id, created_at, updated_at, original_filename,
-                               stored_path, content_type, size_bytes, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (note_id, ts, ts, original_filename, stored_path, content_type,
-             size_bytes, status),
-        )
+    _q(
+        """
+        INSERT INTO notes (id, created_at, updated_at, original_filename,
+                           stored_path, content_type, size_bytes, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (note_id, ts, ts, original_filename, stored_path, content_type,
+         size_bytes, status),
+    )
     return get_note(note_id)
 
 
 def get_note(note_id: str) -> dict | None:
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
-    return dict(row) if row else None
+    rows = _q("SELECT * FROM notes WHERE id = ?", (note_id,))
+    return rows[0] if rows else None
 
 
 def list_notes(limit: int = 100) -> list[dict]:
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM notes ORDER BY created_at DESC LIMIT ?", (limit,)
-        ).fetchall()
-    return [dict(r) for r in rows]
+    return _q("SELECT * FROM notes ORDER BY created_at DESC LIMIT ?", (limit,))
 
 
 def update_note(note_id: str, **fields) -> dict | None:
@@ -123,6 +213,5 @@ def update_note(note_id: str, **fields) -> dict | None:
         return get_note(note_id)
     fields["updated_at"] = _now()
     cols = ", ".join(f"{k} = ?" for k in fields)
-    with get_conn() as conn:
-        conn.execute(f"UPDATE notes SET {cols} WHERE id = ?", (*fields.values(), note_id))
+    _q(f"UPDATE notes SET {cols} WHERE id = ?", (*fields.values(), note_id))
     return get_note(note_id)

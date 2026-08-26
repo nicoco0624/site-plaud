@@ -1,0 +1,16 @@
+.git/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Secrets : fournis via les "Secrets" de Hugging Face, jamais dans l'image
+.env
+token.json
+google_client_secret.json
+
+# Données locales
+uploads/
+data/
+*.db
+*.sqlite3
