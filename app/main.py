@@ -6,20 +6,21 @@
           consultation du texte transcrit.
 Étape 3 : résumé structuré (titre + synthèse + points clés + actions) enchaîné
           après la transcription, consultable en Markdown.
-Étape 4 : archivage automatique sur Google Drive (un dossier par note).
+Étape 4 : archivage automatique en ligne (Backblaze B2 par défaut, Drive en option).
 Étape 5 : envoi d'un email récapitulatif (Gmail SMTP), renvoyable manuellement.
 """
 
+import json
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import db, pipeline, storage
+from app import b2, db, pipeline, storage
 from app.config import BASE_DIR, get_settings
 
 settings = get_settings()
@@ -69,6 +70,7 @@ def _human_size(n: float) -> str:
 
 
 templates.env.filters["human_size"] = lambda n: _human_size(float(n or 0))
+templates.env.filters["fromjson"] = lambda s: json.loads(s) if s else []
 templates.env.globals["PENDING_STATUSES"] = PENDING_STATUSES
 templates.env.globals["STATUS_LABELS"] = STATUS_LABELS
 
@@ -119,6 +121,21 @@ def note_summary(note_id: str):
     if not note["summary_path"]:
         raise HTTPException(status_code=409, detail="Résumé pas encore disponible")
     return (BASE_DIR / note["summary_path"]).read_text(encoding="utf-8")
+
+
+@app.get("/notes/{note_id}/dl/{name}")
+def note_download(note_id: str, name: str):
+    """Redirige vers une URL de téléchargement fraîche pour un fichier archivé."""
+    note = _note_or_404(note_id)
+    links = json.loads(note["archive_links"] or "[]")
+    entry = next((l for l in links if l.get("name") == name), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+    if entry["provider"] == "b2":
+        return RedirectResponse(b2.presigned_url(entry["key"], expires=3600))
+    if entry["provider"] == "gdrive" and entry.get("link"):
+        return RedirectResponse(entry["link"])
+    raise HTTPException(status_code=409, detail="Lien de téléchargement indisponible")
 
 
 @app.post("/notes/{note_id}/email", response_class=HTMLResponse)

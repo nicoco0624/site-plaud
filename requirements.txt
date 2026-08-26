@@ -9,7 +9,10 @@ python-dotenv>=1.0
 # --- Étape 2 & 3 : transcription + résumé (Groq) ---
 groq>=1.7
 
-# --- Étape 4 : archivage Google Drive ---
+# --- Étape 4 : archivage ---
+# Backblaze B2 (API compatible S3) : stockage en ligne principal
+boto3>=1.43
+# Google Drive : conservé, utilisable en local (facultatif)
 google-api-python-client>=2.199
 google-auth-oauthlib>=1.4
 google-auth-httplib2>=0.4

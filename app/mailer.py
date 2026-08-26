@@ -31,11 +31,27 @@ def _load_summary(note: dict) -> dict:
             "actions": []}
 
 
+def _archive_links(note: dict) -> list[tuple[str, str]]:
+    """(libellé, url) pour chaque fichier archivé, si une URL publique est connue."""
+    base = get_settings().public_base_url.rstrip("/")
+    out: list[tuple[str, str]] = []
+    for entry in json.loads(note.get("archive_links") or "[]"):
+        name = entry.get("name")
+        if not name:
+            continue
+        if base:
+            out.append((name, f"{base}/notes/{note['id']}/dl/{name}"))
+        elif entry.get("link"):
+            out.append((name, entry["link"]))
+    return out
+
+
 def _bodies(note: dict, summary: dict) -> tuple[str, str]:
     """Construit (texte brut, HTML) de l'email."""
     pts = summary.get("points_cles") or []
     acts = summary.get("actions") or []
     drive = note.get("drive_folder_link") or ""
+    files = _archive_links(note)
 
     lines = [summary.get("resume", ""), ""]
     if pts:
@@ -48,6 +64,9 @@ def _bodies(note: dict, summary: dict) -> tuple[str, str]:
         lines.append("")
     if drive:
         lines.append(f"Dossier Drive : {drive}")
+    if files:
+        lines.append("Fichiers archivés :")
+        lines += [f"  - {name} : {url}" for name, url in files]
     lines += ["", f"Fichier d'origine : {note.get('original_filename', '')}"]
     text = "\n".join(lines).strip() + "\n"
 
@@ -63,6 +82,15 @@ def _bodies(note: dict, summary: dict) -> tuple[str, str]:
         html.append("<h3>Actions</h3>" + ul(acts, prefix="☐ "))
     if drive:
         html.append(f'<p><a href="{escape(drive)}">Ouvrir le dossier Drive</a></p>')
+    if files:
+        html.append(
+            "<h3>Fichiers archivés</h3><ul>"
+            + "".join(
+                f'<li><a href="{escape(url)}">{escape(name)}</a></li>'
+                for name, url in files
+            )
+            + "</ul>"
+        )
     html.append(
         f"<p style='color:#888;font-size:12px'>Fichier d'origine : "
         f"{escape(note.get('original_filename', ''))}</p>"

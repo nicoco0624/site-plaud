@@ -27,13 +27,40 @@ class Settings(BaseSettings):
     transcribe_language: str = "fr"
 
     # --- Archivage (étape 4) ---
-    # Fichiers OAuth Google (relatifs à la racine si non absolus).
+    # Backend : "auto" (B2 si configuré, sinon Drive si token présent, sinon rien),
+    # ou forcé à "b2" / "drive" / "none".
+    archive_backend: str = "auto"
+    # URL publique du site (pour les liens de téléchargement dans l'email).
+    public_base_url: str = ""
+
+    # Backblaze B2 (API compatible S3).
+    b2_key_id: str = ""
+    b2_app_key: str = ""
+    b2_bucket: str = ""
+    b2_endpoint: str = ""  # ex : https://s3.us-west-004.backblazeb2.com
+
+    # Google Drive (facultatif, surtout pour un usage local).
     google_client_secret_file: str = "google_client_secret.json"
     google_token_file: str = "token.json"
-    # Dossier racine créé dans le Drive pour ranger les notes.
     drive_root_folder: str = "Site Plaud"
-    # Audio > ce seuil -> MEGA (étape 4b) ; sinon -> Google Drive.
+
+    # Audio > ce seuil -> MEGA (étape 4b) ; sinon -> backend d'archivage.
     large_file_threshold_mb: int = 50
+
+    @property
+    def b2_enabled(self) -> bool:
+        return bool(self.b2_key_id and self.b2_app_key and self.b2_bucket
+                    and self.b2_endpoint)
+
+    @property
+    def effective_archive_backend(self) -> str:
+        if self.archive_backend != "auto":
+            return self.archive_backend
+        if self.b2_enabled:
+            return "b2"
+        if self.google_token_path.exists():
+            return "drive"
+        return "none"
 
     # --- Email (étape 5) : Gmail SMTP + mot de passe d'application ---
     smtp_host: str = "smtp.gmail.com"

@@ -2,15 +2,16 @@
 
 Étape 2 : transcription.
 Étape 3 : résumé, enchaîné après une transcription réussie.
-Étape 4 : archivage Google Drive, enchaîné après le résumé.
+Étape 4 : archivage en ligne (Backblaze B2 par défaut, Google Drive en option).
 Étape 5 : envoi de l'email récapitulatif, enchaîné après l'archivage.
 """
 
 import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
-from app import ai, db, drive, mailer
+from app import ai, b2, db, drive, mailer
 from app.config import BASE_DIR, get_settings
 
 log = logging.getLogger("plaud.pipeline")
@@ -95,50 +96,85 @@ def run_summary(note_id: str, transcript: str | None = None) -> None:
     run_archive(note_id)
 
 
-def run_archive(note_id: str) -> None:
-    """Archive les fichiers d'une note sur Google Drive (audio volumineux -> étape 4b)."""
-    note = db.get_note(note_id)
-    if not note:
-        return
-
+def _files_to_archive(note: dict) -> tuple[list[Path], bool]:
+    """Liste des fichiers à archiver + drapeau 'audio trop volumineux'."""
     settings = get_settings()
     audio_dir = (BASE_DIR / note["stored_path"]).parent
     audio_path = BASE_DIR / note["stored_path"]
 
-    # Fichiers texte : toujours sur Drive. Audio : Drive si sous le seuil.
-    to_drive = [p for p in (audio_dir / "transcript.txt", audio_dir / "summary.md",
-                            audio_dir / "summary.json") if p.exists()]
-    audio_oversized = audio_path.stat().st_size > settings.large_file_threshold_bytes
-    if audio_path.exists() and not audio_oversized:
-        to_drive.insert(0, audio_path)
+    files = [p for p in (audio_dir / "transcript.txt", audio_dir / "summary.md",
+                         audio_dir / "summary.json") if p.exists()]
+    oversized = (
+        audio_path.exists()
+        and audio_path.stat().st_size > settings.large_file_threshold_bytes
+    )
+    if audio_path.exists() and not oversized:
+        files.insert(0, audio_path)
+    return files, oversized
+
+
+def _archive_b2(note: dict, files: list[Path]) -> tuple[list[dict], str]:
+    day = note["created_at"][:10]
+    prefix = f"notes/{day}/{note['id']}"
+    links = []
+    for p in files:
+        key = f"{prefix}/{p.name}"
+        b2.upload(p, key)
+        links.append({"provider": "b2", "name": p.name, "key": key})
+    return links, ""
+
+
+def _archive_drive(note: dict, files: list[Path]) -> tuple[list[dict], str]:
+    settings = get_settings()
+    root_id = drive.ensure_folder(settings.drive_root_folder)
+    day = note["created_at"][:10]
+    folder_name = f"{day} · {note.get('title') or note['id']}"[:120]
+    folder_id = drive.ensure_folder(folder_name, parent_id=root_id)
+    links = [
+        {"provider": "gdrive", **drive.upload_file(p, parent_id=folder_id)}
+        for p in files
+    ]
+    return links, drive.folder_link(folder_id)
+
+
+def run_archive(note_id: str) -> None:
+    """Archive les fichiers d'une note en ligne, puis déclenche l'email."""
+    note = db.get_note(note_id)
+    if not note:
+        return
+
+    backend = get_settings().effective_archive_backend
+    files, audio_oversized = _files_to_archive(note)
+
+    if backend == "none":
+        log.info("note %s : aucun backend d'archivage configuré", note_id)
+        db.update_note(
+            note_id,
+            status=db.STATUS_DONE,
+            error="Archivage : aucun backend configuré (B2 ou Drive).",
+        )
+        run_email(note_id)
+        return
 
     db.update_note(note_id, status=db.STATUS_ARCHIVING, error=None)
     try:
-        root_id = drive.ensure_folder(settings.drive_root_folder)
-        day = note["created_at"][:10]
-        folder_name = f"{day} · {note.get('title') or note_id}"[:120]
-        folder_id = drive.ensure_folder(folder_name, parent_id=root_id)
-
-        links = [
-            {"provider": "gdrive", **drive.upload_file(p, parent_id=folder_id)}
-            for p in to_drive
-        ]
-    except Exception as exc:  # noqa: BLE001
-        # Archivage non bloquant : la transcription et le résumé restent
-        # accessibles, et l'email doit quand même partir. On note juste le souci.
-        if isinstance(exc, drive.DriveNotAuthorized):
-            log.warning("archivage %s en attente : %s", note_id, exc)
+        if backend == "b2":
+            links, folder_link = _archive_b2(note, files)
         else:
-            log.exception("archivage échoué pour %s", note_id)
+            links, folder_link = _archive_drive(note, files)
+    except Exception as exc:  # noqa: BLE001
+        # Archivage non bloquant : transcription et résumé restent accessibles,
+        # l'email doit quand même partir. On signale juste le souci.
+        log.warning("archivage %s (%s) échoué : %s", note_id, backend, exc)
         db.update_note(note_id, status=db.STATUS_DONE, error=f"Archivage : {exc}")
         run_email(note_id)
         return
 
     if audio_oversized:
+        audio_name = Path(note["stored_path"]).name
         links.append({
             "provider": "mega",
-            "name": audio_path.name,
-            "link": "",
+            "name": audio_name,
             "note": "audio volumineux — archivage MEGA (étape 4b)",
         })
 
@@ -147,10 +183,10 @@ def run_archive(note_id: str) -> None:
         status=db.STATUS_ARCHIVED,
         archive_links=json.dumps(links, ensure_ascii=False),
         archived_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        drive_folder_link=drive.folder_link(folder_id),
+        drive_folder_link=folder_link or None,
         error=None,
     )
-    log.info("note %s archivée (%d fichiers sur Drive)", note_id, len(links))
+    log.info("note %s archivée sur %s (%d fichiers)", note_id, backend, len(links))
 
     run_email(note_id)
 

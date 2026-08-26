@@ -27,6 +27,11 @@
     {% if n.transcript_path %}<a href="/notes/{{ n.id }}/transcript" target="_blank" rel="noopener">transcription</a>{% set _ = out.append(1) %}{% endif %}
     {% if n.summary_path %}{% if out %} · {% endif %}<a href="/notes/{{ n.id }}/summary" target="_blank" rel="noopener">résumé</a>{% set _ = out.append(1) %}{% endif %}
     {% if n.drive_folder_link %}{% if out %} · {% endif %}<a href="{{ n.drive_folder_link }}" target="_blank" rel="noopener">Drive</a>{% set _ = out.append(1) %}{% endif %}
+    {% if n.archive_links %}
+      {% for f in n.archive_links | fromjson %}
+        {% if f.name and (f.provider != "mega") %}{% if out %} · {% endif %}<a href="/notes/{{ n.id }}/dl/{{ f.name }}" target="_blank" rel="noopener">{{ f.name }}</a>{% set _ = out.append(1) %}{% endif %}
+      {% endfor %}
+    {% endif %}
     {% if not out %}<span class="muted">—</span>{% endif %}
     {% if n.summary_path and n.status not in PENDING_STATUSES %}
       <div>
