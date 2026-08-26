@@ -35,6 +35,22 @@ class Settings(BaseSettings):
     # Audio > ce seuil -> MEGA (étape 4b) ; sinon -> Google Drive.
     large_file_threshold_mb: int = 50
 
+    # --- Email (étape 5) : Gmail SMTP + mot de passe d'application ---
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    mail_to: str = ""
+    mail_from: str = ""  # vide -> smtp_user
+
+    @property
+    def email_enabled(self) -> bool:
+        return bool(self.smtp_user and self.smtp_password and self.mail_to)
+
+    @property
+    def effective_mail_from(self) -> str:
+        return self.mail_from or self.smtp_user
+
     @property
     def google_client_secret_path(self) -> Path:
         p = Path(self.google_client_secret_file)

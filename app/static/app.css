@@ -94,3 +94,15 @@ table.notes th { color: var(--muted); font-weight: 600; }
 .row-hint { margin-top: 4px; font-size: 12px; color: var(--muted); max-width: 320px; }
 
 table.notes a { color: var(--accent); }
+
+.link-btn {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  padding: 4px 0 0;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.link-btn:hover { filter: brightness(1.15); }

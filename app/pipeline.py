@@ -3,13 +3,14 @@
 Étape 2 : transcription.
 Étape 3 : résumé, enchaîné après une transcription réussie.
 Étape 4 : archivage Google Drive, enchaîné après le résumé.
+Étape 5 : envoi de l'email récapitulatif, enchaîné après l'archivage.
 """
 
 import json
 import logging
 from datetime import datetime, timezone
 
-from app import ai, db, drive
+from app import ai, db, drive, mailer
 from app.config import BASE_DIR, get_settings
 
 log = logging.getLogger("plaud.pipeline")
@@ -150,3 +151,36 @@ def run_archive(note_id: str) -> None:
         error=None,
     )
     log.info("note %s archivée (%d fichiers sur Drive)", note_id, len(links))
+
+    run_email(note_id)
+
+
+def run_email(note_id: str) -> None:
+    """Envoie l'email récapitulatif de la note (Gmail SMTP)."""
+    note = db.get_note(note_id)
+    if not note:
+        return
+    if not get_settings().email_enabled:
+        db.update_note(
+            note_id,
+            error=note["error"]
+            or "Email : non configuré (SMTP_USER / SMTP_PASSWORD / MAIL_TO).",
+        )
+        log.info("note %s : email désactivé, envoi ignoré", note_id)
+        return
+
+    db.update_note(note_id, status=db.STATUS_SENDING, error=None)
+    try:
+        to = mailer.send_note_email(db.get_note(note_id))
+    except Exception as exc:  # noqa: BLE001
+        log.exception("envoi email échoué pour %s", note_id)
+        db.update_note(note_id, status=db.STATUS_ERROR, error=f"Email : {exc}")
+        return
+
+    db.update_note(
+        note_id,
+        status=db.STATUS_SENT,
+        emailed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        error=None,
+    )
+    log.info("note %s : email envoyé à %s", note_id, to)

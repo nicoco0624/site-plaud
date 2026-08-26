@@ -7,6 +7,7 @@
 Étape 3 : résumé structuré (titre + synthèse + points clés + actions) enchaîné
           après la transcription, consultable en Markdown.
 Étape 4 : archivage automatique sur Google Drive (un dossier par note).
+Étape 5 : envoi d'un email récapitulatif (Gmail SMTP), renvoyable manuellement.
 """
 
 import uuid
@@ -30,6 +31,7 @@ PENDING_STATUSES = {
     db.STATUS_TRANSCRIBING,
     db.STATUS_SUMMARIZING,
     db.STATUS_ARCHIVING,
+    db.STATUS_SENDING,
 }
 
 STATUS_LABELS = {
@@ -40,6 +42,8 @@ STATUS_LABELS = {
     db.STATUS_DONE: "terminé",
     db.STATUS_ARCHIVING: "archivage…",
     db.STATUS_ARCHIVED: "archivé",
+    db.STATUS_SENDING: "envoi email…",
+    db.STATUS_SENT: "envoyé",
     db.STATUS_ERROR: "erreur",
 }
 
@@ -115,6 +119,19 @@ def note_summary(note_id: str):
     if not note["summary_path"]:
         raise HTTPException(status_code=409, detail="Résumé pas encore disponible")
     return (BASE_DIR / note["summary_path"]).read_text(encoding="utf-8")
+
+
+@app.post("/notes/{note_id}/email", response_class=HTMLResponse)
+def note_send_email(request: Request, background: BackgroundTasks, note_id: str):
+    """(Re)déclenche l'envoi de l'email récapitulatif pour une note."""
+    note = _note_or_404(note_id)
+    if not note["summary_path"]:
+        raise HTTPException(status_code=409, detail="Résumé pas encore disponible")
+    background.add_task(pipeline.run_email, note_id)
+    db.update_note(note_id, status=db.STATUS_SENDING, error=None)
+    return templates.TemplateResponse(
+        request, "_note_row.html", {"n": db.get_note(note_id)}
+    )
 
 
 @app.post("/upload", response_class=HTMLResponse)

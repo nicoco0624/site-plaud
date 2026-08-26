@@ -19,6 +19,8 @@ STATUS_SUMMARIZING = "summarizing"
 STATUS_DONE = "done"
 STATUS_ARCHIVING = "archiving"
 STATUS_ARCHIVED = "archived"
+STATUS_SENDING = "sending"
+STATUS_SENT = "sent"
 STATUS_ERROR = "error"
 
 _SCHEMA = """
@@ -37,7 +39,8 @@ CREATE TABLE IF NOT EXISTS notes (
     title             TEXT,
     archive_links     TEXT,
     archived_at       TEXT,
-    drive_folder_link TEXT
+    drive_folder_link TEXT,
+    emailed_at        TEXT
 );
 """
 
@@ -48,6 +51,7 @@ _MIGRATIONS = [
     ("archive_links", "TEXT"),  # JSON : [{"provider","name","link"}, ...]
     ("archived_at", "TEXT"),
     ("drive_folder_link", "TEXT"),
+    ("emailed_at", "TEXT"),
 ]
 
 
