@@ -13,6 +13,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=user:user . .
+# WORKDIR est créé root : rendre tout le dossier inscriptible par 'user'
+# (l'app y crée uploads/ au démarrage).
+RUN mkdir -p uploads && chown -R user:user /home/user/app
 USER user
 
 # L'hébergeur fournit $PORT (Render : 10000). 7860 par défaut en local.
