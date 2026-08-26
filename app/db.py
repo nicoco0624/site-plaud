@@ -17,6 +17,7 @@ STATUS_TRANSCRIBING = "transcribing"
 STATUS_TRANSCRIBED = "transcribed"
 STATUS_SUMMARIZING = "summarizing"
 STATUS_DONE = "done"
+STATUS_ARCHIVING = "archiving"
 STATUS_ARCHIVED = "archived"
 STATUS_ERROR = "error"
 
@@ -33,7 +34,10 @@ CREATE TABLE IF NOT EXISTS notes (
     error             TEXT,
     transcript_path   TEXT,
     summary_path      TEXT,
-    title             TEXT
+    title             TEXT,
+    archive_links     TEXT,
+    archived_at       TEXT,
+    drive_folder_link TEXT
 );
 """
 
@@ -41,6 +45,9 @@ CREATE TABLE IF NOT EXISTS notes (
 # pour ne pas casser une base déjà créée par une version antérieure.
 _MIGRATIONS = [
     ("title", "TEXT"),
+    ("archive_links", "TEXT"),  # JSON : [{"provider","name","link"}, ...]
+    ("archived_at", "TEXT"),
+    ("drive_folder_link", "TEXT"),
 ]
 
 

@@ -6,6 +6,7 @@
           consultation du texte transcrit.
 Étape 3 : résumé structuré (titre + synthèse + points clés + actions) enchaîné
           après la transcription, consultable en Markdown.
+Étape 4 : archivage automatique sur Google Drive (un dossier par note).
 """
 
 import uuid
@@ -24,7 +25,12 @@ settings = get_settings()
 
 # Statuts « en cours » : tant qu'une note est dans un de ces états, le frontend
 # continue de rafraîchir sa ligne.
-PENDING_STATUSES = {db.STATUS_UPLOADED, db.STATUS_TRANSCRIBING, db.STATUS_SUMMARIZING}
+PENDING_STATUSES = {
+    db.STATUS_UPLOADED,
+    db.STATUS_TRANSCRIBING,
+    db.STATUS_SUMMARIZING,
+    db.STATUS_ARCHIVING,
+}
 
 STATUS_LABELS = {
     db.STATUS_UPLOADED: "reçu",
@@ -32,6 +38,7 @@ STATUS_LABELS = {
     db.STATUS_TRANSCRIBED: "transcrit",
     db.STATUS_SUMMARIZING: "résumé…",
     db.STATUS_DONE: "terminé",
+    db.STATUS_ARCHIVING: "archivage…",
     db.STATUS_ARCHIVED: "archivé",
     db.STATUS_ERROR: "erreur",
 }

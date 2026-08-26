@@ -18,19 +18,16 @@
     <span class="badge badge-{{ n.status }}">{{ STATUS_LABELS.get(n.status, n.status) }}</span>
     {% if n.status == "error" and n.error %}
       <div class="row-error">{{ n.error }}</div>
+    {% elif n.error %}
+      <div class="row-hint">{{ n.error }}</div>
     {% endif %}
   </td>
   <td>
-    {% if n.transcript_path %}
-      <a href="/notes/{{ n.id }}/transcript" target="_blank" rel="noopener">transcription</a>
-    {% endif %}
-    {% if n.summary_path %}
-      {% if n.transcript_path %} · {% endif %}
-      <a href="/notes/{{ n.id }}/summary" target="_blank" rel="noopener">résumé</a>
-    {% endif %}
-    {% if not n.transcript_path and not n.summary_path %}
-      <span class="muted">—</span>
-    {% endif %}
+    {% set out = [] %}
+    {% if n.transcript_path %}<a href="/notes/{{ n.id }}/transcript" target="_blank" rel="noopener">transcription</a>{% set _ = out.append(1) %}{% endif %}
+    {% if n.summary_path %}{% if out %} · {% endif %}<a href="/notes/{{ n.id }}/summary" target="_blank" rel="noopener">résumé</a>{% set _ = out.append(1) %}{% endif %}
+    {% if n.drive_folder_link %}{% if out %} · {% endif %}<a href="{{ n.drive_folder_link }}" target="_blank" rel="noopener">Drive</a>{% set _ = out.append(1) %}{% endif %}
+    {% if not out %}<span class="muted">—</span>{% endif %}
   </td>
   <td>{{ n.created_at.replace("T", " ")[:16] }}</td>
 </tr>

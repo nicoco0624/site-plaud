@@ -26,6 +26,29 @@ class Settings(BaseSettings):
     # Langue attendue des audios (ISO-639-1). "" = détection automatique.
     transcribe_language: str = "fr"
 
+    # --- Archivage (étape 4) ---
+    # Fichiers OAuth Google (relatifs à la racine si non absolus).
+    google_client_secret_file: str = "google_client_secret.json"
+    google_token_file: str = "token.json"
+    # Dossier racine créé dans le Drive pour ranger les notes.
+    drive_root_folder: str = "Site Plaud"
+    # Audio > ce seuil -> MEGA (étape 4b) ; sinon -> Google Drive.
+    large_file_threshold_mb: int = 50
+
+    @property
+    def google_client_secret_path(self) -> Path:
+        p = Path(self.google_client_secret_file)
+        return p if p.is_absolute() else BASE_DIR / p
+
+    @property
+    def google_token_path(self) -> Path:
+        p = Path(self.google_token_file)
+        return p if p.is_absolute() else BASE_DIR / p
+
+    @property
+    def large_file_threshold_bytes(self) -> int:
+        return self.large_file_threshold_mb * 1024 * 1024
+
     @property
     def upload_path(self) -> Path:
         p = Path(self.upload_dir)

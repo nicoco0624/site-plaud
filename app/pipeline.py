@@ -1,14 +1,16 @@
 """Traitements de fond déclenchés après l'upload (FastAPI BackgroundTasks).
 
 Étape 2 : transcription.
-Étape 3 : résumé, enchaîné automatiquement après une transcription réussie.
+Étape 3 : résumé, enchaîné après une transcription réussie.
+Étape 4 : archivage Google Drive, enchaîné après le résumé.
 """
 
 import json
 import logging
+from datetime import datetime, timezone
 
-from app import ai, db
-from app.config import BASE_DIR
+from app import ai, db, drive
+from app.config import BASE_DIR, get_settings
 
 log = logging.getLogger("plaud.pipeline")
 
@@ -88,3 +90,63 @@ def run_summary(note_id: str, transcript: str | None = None) -> None:
         error=None,
     )
     log.info("note %s résumée : %s", note_id, summary["titre"])
+
+    run_archive(note_id)
+
+
+def run_archive(note_id: str) -> None:
+    """Archive les fichiers d'une note sur Google Drive (audio volumineux -> étape 4b)."""
+    note = db.get_note(note_id)
+    if not note:
+        return
+
+    settings = get_settings()
+    audio_dir = (BASE_DIR / note["stored_path"]).parent
+    audio_path = BASE_DIR / note["stored_path"]
+
+    # Fichiers texte : toujours sur Drive. Audio : Drive si sous le seuil.
+    to_drive = [p for p in (audio_dir / "transcript.txt", audio_dir / "summary.md",
+                            audio_dir / "summary.json") if p.exists()]
+    audio_oversized = audio_path.stat().st_size > settings.large_file_threshold_bytes
+    if audio_path.exists() and not audio_oversized:
+        to_drive.insert(0, audio_path)
+
+    db.update_note(note_id, status=db.STATUS_ARCHIVING, error=None)
+    try:
+        root_id = drive.ensure_folder(settings.drive_root_folder)
+        day = note["created_at"][:10]
+        folder_name = f"{day} · {note.get('title') or note_id}"[:120]
+        folder_id = drive.ensure_folder(folder_name, parent_id=root_id)
+
+        links = [
+            {"provider": "gdrive", **drive.upload_file(p, parent_id=folder_id)}
+            for p in to_drive
+        ]
+    except drive.DriveNotAuthorized as exc:
+        # Le contenu (transcription/résumé) reste accessible ; on n'échoue pas la
+        # note, on signale juste que l'archivage attend l'autorisation Google.
+        log.warning("archivage %s en attente : %s", note_id, exc)
+        db.update_note(note_id, status=db.STATUS_DONE, error=f"Archivage : {exc}")
+        return
+    except Exception as exc:  # noqa: BLE001
+        log.exception("archivage échoué pour %s", note_id)
+        db.update_note(note_id, status=db.STATUS_ERROR, error=f"Archivage : {exc}")
+        return
+
+    if audio_oversized:
+        links.append({
+            "provider": "mega",
+            "name": audio_path.name,
+            "link": "",
+            "note": "audio volumineux — archivage MEGA (étape 4b)",
+        })
+
+    db.update_note(
+        note_id,
+        status=db.STATUS_ARCHIVED,
+        archive_links=json.dumps(links, ensure_ascii=False),
+        archived_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        drive_folder_link=drive.folder_link(folder_id),
+        error=None,
+    )
+    log.info("note %s archivée (%d fichiers sur Drive)", note_id, len(links))

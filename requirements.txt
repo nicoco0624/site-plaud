@@ -9,8 +9,11 @@ python-dotenv>=1.0
 # --- Étape 2 & 3 : transcription + résumé (Groq) ---
 groq>=1.7
 
+# --- Étape 4 : archivage Google Drive ---
+google-api-python-client>=2.199
+google-auth-oauthlib>=1.4
+google-auth-httplib2>=0.4
+
 # --- Étapes suivantes (ajoutées au fur et à mesure) ---
-# google-api-python-client>=2.0  # étape 4 : archivage Google Drive
-# google-auth-oauthlib>=1.2      # étape 4 : OAuth Drive
-# mega.py                        # étape 4 : archivage MEGA (fichiers volumineux)
+# mega.py                        # étape 4b : archivage MEGA (fichiers volumineux)
 # libsql-experimental>=0.1       # étape 6 : bascule SQLite -> Turso (déploiement)

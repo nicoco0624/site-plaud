@@ -6,6 +6,8 @@ venv/
 
 # Secrets & config
 .env
+google_client_secret.json
+token.json
 
 # Données locales (non versionnées)
 uploads/
