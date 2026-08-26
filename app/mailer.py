@@ -1,15 +1,19 @@
 """Envoi de l'email récapitulatif d'une note (étape 5).
 
-Transport : SMTP Gmail (smtp.gmail.com:587, STARTTLS) avec un **mot de passe
-d'application** (nécessite la validation en 2 étapes sur le compte Google).
-Gratuit, ~500 destinataires/jour.
+Deux transports, choisis dans la config :
+  - Resend (API HTTPS)  -> fonctionne partout, y compris sur Render où le SMTP
+    sortant est bloqué. Transport par défaut en ligne.
+  - SMTP Gmail          -> pratique en local (mot de passe d'application).
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import smtplib
 import ssl
+import urllib.error
+import urllib.request
 from email.message import EmailMessage
 from html import escape
 from pathlib import Path
@@ -98,38 +102,75 @@ def _bodies(note: dict, summary: dict) -> tuple[str, str]:
     return text, "\n".join(html)
 
 
+def _attachments(note: dict) -> list[tuple[str, bytes]]:
+    out = []
+    for key in ("transcript_path", "summary_path"):
+        rel = note.get(key)
+        if rel and (BASE_DIR / rel).exists():
+            p = BASE_DIR / rel
+            out.append((p.name, p.read_bytes()))
+    return out
+
+
+def _send_resend(settings, subject, text, html, atts) -> str:
+    payload = {
+        "from": settings.effective_mail_from,
+        "to": [settings.mail_to],
+        "subject": subject,
+        "text": text,
+        "html": f"<!doctype html><html><body>{html}</body></html>",
+    }
+    if atts:
+        payload["attachments"] = [
+            {"filename": name, "content": base64.b64encode(data).decode()}
+            for name, data in atts
+        ]
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        method="POST",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Authorization": f"Bearer {settings.resend_api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            json.load(r)
+    except urllib.error.HTTPError as e:  # type: ignore[attr-defined]
+        raise RuntimeError(f"Resend {e.code}: {e.read().decode()[:200]}") from e
+    return settings.mail_to
+
+
+def _send_smtp(settings, subject, text, html, atts) -> str:
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = settings.effective_mail_from
+    msg["To"] = settings.mail_to
+    msg.set_content(text)
+    msg.add_alternative(f"<!doctype html><html><body>{html}</body></html>", subtype="html")
+    for name, data in atts:
+        msg.add_attachment(data, maintype="text", subtype="plain", filename=name)
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as s:
+        s.starttls(context=ssl.create_default_context())
+        s.login(settings.smtp_user, settings.smtp_password)
+        s.send_message(msg)
+    return settings.mail_to
+
+
 def send_note_email(note: dict) -> str:
     """Envoie le récap de la note. Renvoie l'adresse destinataire."""
     settings = get_settings()
     if not settings.email_enabled:
         raise EmailNotConfigured(
-            "SMTP_USER / SMTP_PASSWORD / MAIL_TO manquants dans .env (étape 5)."
+            "Aucun transport email configuré (RESEND_API_KEY ou SMTP_*, + MAIL_TO)."
         )
 
     summary = _load_summary(note)
     text, html = _bodies(note, summary)
+    subject = f"[Plaud] {summary.get('titre', 'Note')}"
+    atts = _attachments(note)
 
-    msg = EmailMessage()
-    msg["Subject"] = f"[Plaud] {summary.get('titre', 'Note')}"
-    msg["From"] = settings.effective_mail_from
-    msg["To"] = settings.mail_to
-    msg.set_content(text)
-    msg.add_alternative(
-        f"<!doctype html><html><body>{html}</body></html>", subtype="html"
-    )
-
-    # Pièces jointes : transcription + résumé Markdown (petits fichiers texte).
-    for key in ("transcript_path", "summary_path"):
-        rel = note.get(key)
-        if rel and (BASE_DIR / rel).exists():
-            p = BASE_DIR / rel
-            msg.add_attachment(
-                p.read_bytes(), maintype="text", subtype="plain", filename=p.name
-            )
-
-    ctx = ssl.create_default_context()
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as s:
-        s.starttls(context=ctx)
-        s.login(settings.smtp_user, settings.smtp_password)
-        s.send_message(msg)
-    return settings.mail_to
+    if settings.email_provider == "resend":
+        return _send_resend(settings, subject, text, html, atts)
+    return _send_smtp(settings, subject, text, html, atts)

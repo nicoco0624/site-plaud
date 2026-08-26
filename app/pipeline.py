@@ -208,12 +208,14 @@ def run_email(note_id: str) -> None:
         log.info("note %s : email désactivé, envoi ignoré", note_id)
         return
 
+    resume_status = note["status"] if note["status"] != db.STATUS_SENDING else db.STATUS_ARCHIVED
     db.update_note(note_id, status=db.STATUS_SENDING)
     try:
         to = mailer.send_note_email(db.get_note(note_id))
     except Exception as exc:  # noqa: BLE001
-        log.exception("envoi email échoué pour %s", note_id)
-        db.update_note(note_id, status=db.STATUS_ERROR, error=f"Email : {exc}")
+        # L'email est la dernière étape, optionnelle : on n'échoue pas la note.
+        log.warning("envoi email échoué pour %s : %s", note_id, exc)
+        db.update_note(note_id, status=resume_status, error=f"Email : {exc}")
         return
 
     db.update_note(

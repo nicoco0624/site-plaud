@@ -69,21 +69,39 @@ class Settings(BaseSettings):
             return "drive"
         return "none"
 
-    # --- Email (étape 5) : Gmail SMTP + mot de passe d'application ---
+    # --- Email (étape 5) ---
+    # Deux transports possibles :
+    #  - Resend (API HTTPS) : marche partout, y compris là où le SMTP sortant
+    #    est bloqué (Render). Sans domaine vérifié : from = onboarding@resend.dev,
+    #    destinataire = l'adresse du compte Resend.
+    #  - SMTP Gmail : pratique en local (mot de passe d'application).
+    resend_api_key: str = ""
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
     mail_to: str = ""
-    mail_from: str = ""  # vide -> smtp_user
+    mail_from: str = ""
+
+    @property
+    def email_provider(self) -> str:
+        if self.resend_api_key:
+            return "resend"
+        if self.smtp_user and self.smtp_password:
+            return "smtp"
+        return "none"
 
     @property
     def email_enabled(self) -> bool:
-        return bool(self.smtp_user and self.smtp_password and self.mail_to)
+        return self.email_provider != "none" and bool(self.mail_to)
 
     @property
     def effective_mail_from(self) -> str:
-        return self.mail_from or self.smtp_user
+        if self.mail_from:
+            return self.mail_from
+        if self.email_provider == "resend":
+            return "Site Plaud <onboarding@resend.dev>"
+        return self.smtp_user
 
     @property
     def google_client_secret_path(self) -> Path:
