@@ -89,3 +89,7 @@ table.notes th { color: var(--muted); font-weight: 600; }
 .badge-transcribing, .badge-summarizing { background: rgba(210,168,60,.2); color: #d2a83c; }
 .badge-transcribed, .badge-done, .badge-archived { background: rgba(63,185,80,.2); color: var(--ok); }
 .badge-error { background: rgba(248,81,73,.2); color: var(--err); }
+
+.row-error { margin-top: 4px; font-size: 12px; color: var(--err); max-width: 320px; }
+
+table.notes a { color: var(--accent); }

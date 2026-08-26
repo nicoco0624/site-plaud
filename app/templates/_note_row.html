@@ -1,0 +1,28 @@
+{#
+  Ligne d'une note. Tant que le statut est « en cours », la ligne se ré-interroge
+  toute seule toutes les 3 s (hx-trigger="every 3s"). Une fois dans un état final,
+  ces attributs disparaissent et le polling s'arrête.
+#}
+<tr id="note-{{ n.id }}"
+    {% if n.status in PENDING_STATUSES %}
+      hx-get="/notes/{{ n.id }}/row"
+      hx-trigger="every 3s"
+      hx-swap="outerHTML"
+    {% endif %}>
+  <td>{{ n.original_filename }}</td>
+  <td>{{ n.size_bytes | human_size }}</td>
+  <td>
+    <span class="badge badge-{{ n.status }}">{{ STATUS_LABELS.get(n.status, n.status) }}</span>
+    {% if n.status == "error" and n.error %}
+      <div class="row-error">{{ n.error }}</div>
+    {% endif %}
+  </td>
+  <td>
+    {% if n.transcript_path %}
+      <a href="/notes/{{ n.id }}/transcript" target="_blank" rel="noopener">transcription</a>
+    {% else %}
+      <span class="muted">—</span>
+    {% endif %}
+  </td>
+  <td>{{ n.created_at.replace("T", " ")[:16] }}</td>
+</tr>

@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///data/plaud.db"
     max_upload_mb: int = 200
 
+    # --- Groq (étapes 2 & 3) ---
+    groq_api_key: str = ""
+    groq_transcribe_model: str = "whisper-large-v3-turbo"
+    groq_summary_model: str = "openai/gpt-oss-120b"
+    # Langue attendue des audios (ISO-639-1). "" = détection automatique.
+    transcribe_language: str = "fr"
+
     @property
     def upload_path(self) -> Path:
         p = Path(self.upload_dir)
