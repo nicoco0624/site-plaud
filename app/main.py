@@ -4,6 +4,8 @@
 Étape 1 : upload de fichiers audio (drag & drop + bouton) -> statut "uploaded".
 Étape 2 : transcription Groq en tâche de fond, statut suivi par polling HTMX,
           consultation du texte transcrit.
+Étape 3 : résumé structuré (titre + synthèse + points clés + actions) enchaîné
+          après la transcription, consultable en Markdown.
 """
 
 import uuid
@@ -98,6 +100,14 @@ def note_transcript(note_id: str):
     if not note["transcript_path"]:
         raise HTTPException(status_code=409, detail="Transcription pas encore disponible")
     return (BASE_DIR / note["transcript_path"]).read_text(encoding="utf-8")
+
+
+@app.get("/notes/{note_id}/summary", response_class=PlainTextResponse)
+def note_summary(note_id: str):
+    note = _note_or_404(note_id)
+    if not note["summary_path"]:
+        raise HTTPException(status_code=409, detail="Résumé pas encore disponible")
+    return (BASE_DIR / note["summary_path"]).read_text(encoding="utf-8")
 
 
 @app.post("/upload", response_class=HTMLResponse)

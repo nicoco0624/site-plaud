@@ -9,7 +9,10 @@
       hx-trigger="every 3s"
       hx-swap="outerHTML"
     {% endif %}>
-  <td>{{ n.original_filename }}</td>
+  <td>
+    {% if n.title %}<strong>{{ n.title }}</strong><br>{% endif %}
+    <span class="muted">{{ n.original_filename }}</span>
+  </td>
   <td>{{ n.size_bytes | human_size }}</td>
   <td>
     <span class="badge badge-{{ n.status }}">{{ STATUS_LABELS.get(n.status, n.status) }}</span>
@@ -20,7 +23,12 @@
   <td>
     {% if n.transcript_path %}
       <a href="/notes/{{ n.id }}/transcript" target="_blank" rel="noopener">transcription</a>
-    {% else %}
+    {% endif %}
+    {% if n.summary_path %}
+      {% if n.transcript_path %} · {% endif %}
+      <a href="/notes/{{ n.id }}/summary" target="_blank" rel="noopener">résumé</a>
+    {% endif %}
+    {% if not n.transcript_path and not n.summary_path %}
       <span class="muted">—</span>
     {% endif %}
   </td>

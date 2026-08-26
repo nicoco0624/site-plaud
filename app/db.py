@@ -32,9 +32,16 @@ CREATE TABLE IF NOT EXISTS notes (
     status            TEXT NOT NULL,
     error             TEXT,
     transcript_path   TEXT,
-    summary_path      TEXT
+    summary_path      TEXT,
+    title             TEXT
 );
 """
+
+# Colonnes ajoutées après coup : (nom, définition SQL). Appliquées si absentes,
+# pour ne pas casser une base déjà créée par une version antérieure.
+_MIGRATIONS = [
+    ("title", "TEXT"),
+]
 
 
 def _now() -> str:
@@ -57,6 +64,10 @@ def get_conn() -> Iterator[sqlite3.Connection]:
 def init_db() -> None:
     with get_conn() as conn:
         conn.executescript(_SCHEMA)
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(notes)")}
+        for name, ddl in _MIGRATIONS:
+            if name not in existing:
+                conn.execute(f"ALTER TABLE notes ADD COLUMN {name} {ddl}")
 
 
 def create_note(
