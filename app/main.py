@@ -57,8 +57,20 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=BASE_DIR / "app" / "static"), name="static")
+_STATIC_DIR = BASE_DIR / "app" / "static"
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "app" / "templates")
+
+
+def _asset_version(name: str) -> str:
+    """Suffixe de cache-busting basé sur la date de modif du fichier."""
+    try:
+        return str(int((_STATIC_DIR / name).stat().st_mtime))
+    except OSError:
+        return "0"
+
+
+templates.env.globals["asset_version"] = _asset_version
 
 
 def _human_size(n: float) -> str:
