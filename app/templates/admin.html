@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Mode admin — Site Plaud{% endblock %}
+
+{% block content %}
+<div class="admin-banner">
+  <span class="admin-badge">● MODE ADMIN</span>
+  <span class="admin-sub">Vue globale — toutes les notes de tous les comptes</span>
+  <a href="/logout" class="admin-exit">quitter</a>
+</div>
+
+<section class="card">
+  <div class="admin-stats">
+    <div><strong>{{ stats.users }}</strong><span>comptes</span></div>
+    <div><strong>{{ stats.notes }}</strong><span>notes</span></div>
+    <div><strong>{{ stats.bytes | human_size }}</strong><span>stockage total</span></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Toutes les notes</h2>
+  {% if not rows %}
+    <p class="muted">Aucune note pour l'instant.</p>
+  {% else %}
+  <div class="admin-table-wrap">
+    <table class="notes admin-table">
+      <thead>
+        <tr>
+          <th>Utilisateur</th><th>Fichier</th><th>Taille</th>
+          <th>Statut</th><th>Créée</th><th>Transcription</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for n in rows %}
+        <tr>
+          <td>{{ n.owner_email or '—' }}</td>
+          <td>
+            {% if n.title %}<strong>{{ n.title }}</strong><br>{% endif %}
+            <span class="muted">{{ n.original_filename }}</span>
+          </td>
+          <td>{{ n.size_bytes | human_size }}</td>
+          <td><span class="badge badge-{{ n.status }}">{{ STATUS_LABELS.get(n.status, n.status) }}</span></td>
+          <td>{{ n.created_at.replace("T", " ")[:16] }}</td>
+          <td class="admin-transcript">
+            {% if n.transcript %}
+              <details>
+                <summary>{{ n.transcript[:90] }}{% if n.transcript|length > 90 %}…{% endif %}</summary>
+                <pre>{{ n.transcript }}</pre>
+              </details>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

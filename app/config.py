@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     max_uploads_per_day: int = 20     # quota d'uploads par utilisateur / 24 h
     max_notes_per_user: int = 100     # nombre total de notes par utilisateur
     session_days: int = 30
+    admin_emails: str = ""            # comptes admin, emails séparés par des virgules
+
+    @property
+    def admin_emails_list(self) -> list[str]:
+        return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
 
     @property
     def db_backend(self) -> str:

@@ -251,6 +251,23 @@ def count_notes(user_id: str) -> int:
     return int(rows[0]["n"]) if rows else 0
 
 
+# ----- vue admin (toutes les notes, tous les comptes) -----
+
+def list_all_notes(limit: int = 1000) -> list[dict]:
+    return _q(
+        "SELECT n.*, u.email AS owner_email "
+        "FROM notes n LEFT JOIN users u ON u.id = n.user_id "
+        "ORDER BY n.created_at DESC LIMIT ?",
+        (limit,),
+    )
+
+
+def global_stats() -> dict:
+    users = int(_q("SELECT COUNT(*) AS c FROM users")[0]["c"])
+    agg = _q("SELECT COUNT(*) AS c, COALESCE(SUM(size_bytes), 0) AS s FROM notes")[0]
+    return {"users": users, "notes": int(agg["c"]), "bytes": int(agg["s"])}
+
+
 def update_note(note_id: str, **fields) -> dict | None:
     if not fields:
         return get_note(note_id)

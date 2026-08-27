@@ -148,10 +148,12 @@ _SENSITIVE_USER_FIELDS = {"password_hash"}
 
 
 def _public_user(row: dict | None) -> dict | None:
-    """Retire les champs sensibles avant de faire circuler l'utilisateur."""
+    """Retire les champs sensibles, ajoute le drapeau admin."""
     if not row:
         return None
-    return {k: v for k, v in row.items() if k not in _SENSITIVE_USER_FIELDS}
+    u = {k: v for k, v in row.items() if k not in _SENSITIVE_USER_FIELDS}
+    u["is_admin"] = (u.get("email") or "").lower() in settings.admin_emails_list
+    return u
 
 
 def _current_user(request: Request) -> dict | None:
@@ -334,6 +336,8 @@ def healthz() -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request, user: dict = Depends(require_user)):
+    if user.get("is_admin"):
+        return RedirectResponse("/admin", status_code=303)
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -342,6 +346,41 @@ def index(request: Request, user: dict = Depends(require_user)):
             "max_upload_mb": settings.max_upload_mb,
             "notes_count": db.count_notes(user["id"]),
         },
+    )
+
+
+def _admin_transcript(note: dict) -> str:
+    """Texte de la transcription : fichier local, sinon copie B2, sinon vide."""
+    rel = note.get("transcript_path")
+    if rel:
+        p = _resolve_inside(rel)
+        if p and p.is_file():
+            try:
+                return p.read_text(encoding="utf-8")
+            except OSError:
+                pass
+    for entry in json.loads(note.get("archive_links") or "[]"):
+        if (entry.get("name") == "transcript.txt"
+                and entry.get("provider") == "b2" and entry.get("key")):
+            try:
+                return b2.fetch_text(entry["key"])
+            except Exception:  # noqa: BLE001
+                return ""
+    return ""
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_dashboard(request: Request, user: dict = Depends(require_user)):
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=404, detail="Not found")
+    slog.info("admin dashboard email=%s ip=%s", user["email"], _client_ip(request))
+    rows = [
+        {**n, "transcript": _admin_transcript(n)}
+        for n in db.list_all_notes()
+    ]
+    return templates.TemplateResponse(
+        request, "admin.html",
+        {"user": user, "rows": rows, "stats": db.global_stats()},
     )
 
 

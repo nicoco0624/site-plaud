@@ -47,6 +47,13 @@ def delete(key: str) -> None:
     _client().delete_object(Bucket=s.b2_bucket, Key=key)
 
 
+def fetch_text(key: str, max_bytes: int = 300_000) -> str:
+    """Télécharge un objet texte (transcription) et le renvoie en str."""
+    s = get_settings()
+    obj = _client().get_object(Bucket=s.b2_bucket, Key=key)
+    return obj["Body"].read(max_bytes).decode("utf-8", "replace")
+
+
 def presigned_url(key: str, expires: int = 3600) -> str:
     """URL de téléchargement temporaire pour un objet privé."""
     s = get_settings()
