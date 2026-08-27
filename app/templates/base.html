@@ -28,6 +28,7 @@
   <footer>
     <span class="dot"></span>
     <span>Traitement 100&nbsp;% automatique — propulsé par Whisper &amp; un LLM</span>
+    {% if auth_required() %}<a class="logout-link" href="/logout">Déconnexion</a>{% endif %}
   </footer>
 </body>
 </html>

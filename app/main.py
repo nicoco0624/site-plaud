@@ -10,13 +10,23 @@
 Étape 5 : envoi d'un email récapitulatif (Gmail SMTP), renvoyable manuellement.
 """
 
+import hashlib
+import hmac
 import json
 import shutil
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response, UploadFile
+from fastapi import (
+    BackgroundTasks,
+    FastAPI,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -86,6 +96,77 @@ templates.env.filters["human_size"] = lambda n: _human_size(float(n or 0))
 templates.env.filters["fromjson"] = lambda s: json.loads(s) if s else []
 templates.env.globals["PENDING_STATUSES"] = PENDING_STATUSES
 templates.env.globals["STATUS_LABELS"] = STATUS_LABELS
+templates.env.globals["auth_required"] = lambda: bool(get_settings().access_password)
+
+
+# --------------------------------------------------------------------------- #
+#  Accès : mot de passe unique (cookie signé). Vide -> site ouvert.
+# --------------------------------------------------------------------------- #
+_AUTH_COOKIE = "plaud_auth"
+_AUTH_EXEMPT = ("/login", "/logout", "/healthz", "/static/", "/favicon.ico")
+
+
+def _auth_token(password: str) -> str:
+    return hashlib.sha256(f"plaud::{password}".encode()).hexdigest()
+
+
+def _is_authed(request: Request, password: str) -> bool:
+    return hmac.compare_digest(
+        request.cookies.get(_AUTH_COOKIE, ""), _auth_token(password)
+    )
+
+
+@app.middleware("http")
+async def _auth_gate(request: Request, call_next):
+    password = get_settings().access_password
+    if password:
+        path = request.url.path
+        exempt = any(path == p or path.startswith(p) for p in _AUTH_EXEMPT)
+        if not exempt and not _is_authed(request, password):
+            if request.headers.get("hx-request") == "true":
+                return Response(status_code=401, headers={"HX-Redirect": "/login"})
+            return RedirectResponse(f"/login?next={path}", status_code=303)
+    return await call_next(request)
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_form(request: Request, next: str = "/"):
+    if not get_settings().access_password:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(
+        request, "login.html", {"next_url": next, "error": False}
+    )
+
+
+@app.post("/login")
+def login_submit(
+    request: Request,
+    password: str = Form(""),
+    next: str = Form("/"),
+):
+    real = get_settings().access_password
+    if real and hmac.compare_digest(password, real):
+        target = next if next.startswith("/") else "/"
+        resp = RedirectResponse(target, status_code=303)
+        resp.set_cookie(
+            _AUTH_COOKIE,
+            _auth_token(real),
+            max_age=60 * 60 * 24 * 30,
+            httponly=True,
+            samesite="lax",
+            secure=request.url.scheme == "https",
+        )
+        return resp
+    return templates.TemplateResponse(
+        request, "login.html", {"next_url": next, "error": True}, status_code=401
+    )
+
+
+@app.get("/logout")
+def logout():
+    resp = RedirectResponse("/login", status_code=303)
+    resp.delete_cookie(_AUTH_COOKIE)
+    return resp
 
 
 def _note_or_404(note_id: str) -> dict:

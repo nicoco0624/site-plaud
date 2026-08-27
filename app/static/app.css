@@ -395,6 +395,29 @@ footer .dot {
   box-shadow: 0 0 8px var(--lime), 0 0 16px var(--lime);
   animation: blink 2s ease-in-out infinite;
 }
+.logout-link { margin-left: auto; color: var(--faint); }
+.logout-link:hover { color: var(--fuchsia); }
+
+/* ---------- login ---------- */
+.login-card { max-width: 380px; margin: 40px auto; }
+.login-hint { margin: -8px 0 16px; font-size: .88rem; }
+.login-form { display: grid; gap: 12px; }
+.login-form input[type="password"] {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: rgba(20, 10, 36, .5);
+  color: var(--ink);
+  font: inherit;
+  outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.login-form input[type="password"]:focus {
+  border-color: var(--fuchsia);
+  box-shadow: 0 0 0 3px rgba(240, 56, 200, .18);
+}
+.login-form input::placeholder { color: var(--faint); }
 
 /* fun scrollbar */
 ::-webkit-scrollbar { height: 10px; width: 10px; }
