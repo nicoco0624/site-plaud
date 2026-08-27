@@ -162,10 +162,12 @@ def _current_user(request: Request) -> dict | None:
 
 
 def _set_session(resp: Response, request: Request, user_id: str) -> None:
+    # Cookie de session (pas de max_age / expires) : le navigateur l'efface à sa
+    # fermeture -> il faut se reconnecter (email + mot de passe) à chaque
+    # nouvelle session. Les notes, elles, restent en base (liées au compte).
     resp.set_cookie(
         _SESSION_COOKIE,
         auth.sign(user_id),
-        max_age=60 * 60 * 24 * settings.session_days,
         httponly=True,
         samesite="lax",
         secure=request.url.scheme == "https",

@@ -28,7 +28,6 @@ class Settings(BaseSettings):
     allowed_hosts: str = "*"          # liste séparée par des virgules, ou "*"
     max_uploads_per_day: int = 20     # quota d'uploads par utilisateur / 24 h
     max_notes_per_user: int = 100     # nombre total de notes par utilisateur
-    session_days: int = 30
     admin_emails: str = ""            # comptes admin, emails séparés par des virgules
 
     @property
