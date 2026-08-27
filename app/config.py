@@ -75,8 +75,9 @@ class Settings(BaseSettings):
     #    est bloqué (Render). Sans domaine vérifié : from = onboarding@resend.dev,
     #    destinataire = l'adresse du compte Resend.
     #  - SMTP Gmail : pratique en local (mot de passe d'application).
-    # Mot de passe unique pour entrer sur le site. Vide = site ouvert (dev).
-    access_password: str = ""
+    # Clé de signature des cookies de session. À définir en prod (stable entre
+    # redémarrages, sinon toutes les sessions sautent).
+    secret_key: str = "dev-insecure-change-me"
 
     resend_api_key: str = ""
     smtp_host: str = "smtp.gmail.com"

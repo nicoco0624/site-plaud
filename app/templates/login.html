@@ -2,15 +2,17 @@
 {% block title %}Connexion — Site Plaud{% endblock %}
 
 {% block content %}
-<section class="card login-card">
+<section class="card auth-card">
   <h2>Connexion</h2>
-  <p class="muted login-hint">Cet espace est privé.</p>
-  {% if error %}<p class="alert error">Mot de passe incorrect.</p>{% endif %}
-  <form method="post" action="/login" class="login-form">
+  {% if error %}<p class="alert error">{{ error }}</p>{% endif %}
+  <form method="post" action="/login" class="auth-form">
     <input type="hidden" name="next" value="{{ next_url }}">
+    <input type="email" name="email" placeholder="Adresse email"
+           autocomplete="email" autofocus required>
     <input type="password" name="password" placeholder="Mot de passe"
-           autocomplete="current-password" autofocus required>
-    <button type="submit">Entrer</button>
+           autocomplete="current-password" required>
+    <button type="submit">Se connecter</button>
   </form>
+  <p class="auth-switch">Pas encore de compte ? <a href="/register">Créer un compte</a></p>
 </section>
 {% endblock %}

@@ -395,14 +395,14 @@ footer .dot {
   box-shadow: 0 0 8px var(--lime), 0 0 16px var(--lime);
   animation: blink 2s ease-in-out infinite;
 }
-.logout-link { margin-left: auto; color: var(--faint); }
+.user-chip { margin-left: auto; color: var(--faint); }
+.logout-link { color: var(--faint); }
 .logout-link:hover { color: var(--fuchsia); }
 
-/* ---------- login ---------- */
-.login-card { max-width: 380px; margin: 40px auto; }
-.login-hint { margin: -8px 0 16px; font-size: .88rem; }
-.login-form { display: grid; gap: 12px; }
-.login-form input[type="password"] {
+/* ---------- login / register ---------- */
+.auth-card { max-width: 400px; margin: 44px auto; }
+.auth-form { display: grid; gap: 12px; }
+.auth-form input {
   width: 100%;
   padding: 12px 14px;
   border-radius: 12px;
@@ -413,11 +413,13 @@ footer .dot {
   outline: none;
   transition: border-color .15s ease, box-shadow .15s ease;
 }
-.login-form input[type="password"]:focus {
+.auth-form input:focus {
   border-color: var(--fuchsia);
   box-shadow: 0 0 0 3px rgba(240, 56, 200, .18);
 }
-.login-form input::placeholder { color: var(--faint); }
+.auth-form input::placeholder { color: var(--faint); }
+.auth-form button[type="submit"] { justify-self: stretch; text-align: center; }
+.auth-switch { margin: 16px 0 0; font-size: .88rem; color: var(--muted); }
 
 /* fun scrollbar */
 ::-webkit-scrollbar { height: 10px; width: 10px; }

@@ -10,8 +10,6 @@
 Étape 5 : envoi d'un email récapitulatif (Gmail SMTP), renvoyable manuellement.
 """
 
-import hashlib
-import hmac
 import json
 import shutil
 import uuid
@@ -20,6 +18,7 @@ from pathlib import Path
 
 from fastapi import (
     BackgroundTasks,
+    Depends,
     FastAPI,
     Form,
     HTTPException,
@@ -31,7 +30,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import b2, db, pipeline, storage
+from app import auth, b2, db, pipeline, storage
 from app.config import BASE_DIR, get_settings
 
 settings = get_settings()
@@ -96,82 +95,130 @@ templates.env.filters["human_size"] = lambda n: _human_size(float(n or 0))
 templates.env.filters["fromjson"] = lambda s: json.loads(s) if s else []
 templates.env.globals["PENDING_STATUSES"] = PENDING_STATUSES
 templates.env.globals["STATUS_LABELS"] = STATUS_LABELS
-templates.env.globals["auth_required"] = lambda: bool(get_settings().access_password)
 
 
 # --------------------------------------------------------------------------- #
-#  Accès : mot de passe unique (cookie signé). Vide -> site ouvert.
+#  Comptes : email + mot de passe, session par cookie signé.
 # --------------------------------------------------------------------------- #
-_AUTH_COOKIE = "plaud_auth"
-_AUTH_EXEMPT = ("/login", "/logout", "/healthz", "/static/", "/favicon.ico")
+_SESSION_COOKIE = "plaud_session"
+_SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 jours
+_AUTH_EXEMPT = ("/login", "/register", "/logout", "/healthz", "/static/", "/favicon.ico")
 
 
-def _auth_token(password: str) -> str:
-    return hashlib.sha256(f"plaud::{password}".encode()).hexdigest()
+def _current_user(request: Request) -> dict | None:
+    uid = auth.unsign(request.cookies.get(_SESSION_COOKIE, ""))
+    return db.get_user(uid) if uid else None
 
 
-def _is_authed(request: Request, password: str) -> bool:
-    return hmac.compare_digest(
-        request.cookies.get(_AUTH_COOKIE, ""), _auth_token(password)
+def _set_session(resp: Response, request: Request, user_id: str) -> None:
+    resp.set_cookie(
+        _SESSION_COOKIE,
+        auth.sign(user_id),
+        max_age=_SESSION_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
     )
 
 
 @app.middleware("http")
 async def _auth_gate(request: Request, call_next):
-    password = get_settings().access_password
-    if password:
-        path = request.url.path
-        exempt = any(path == p or path.startswith(p) for p in _AUTH_EXEMPT)
-        if not exempt and not _is_authed(request, password):
-            if request.headers.get("hx-request") == "true":
-                return Response(status_code=401, headers={"HX-Redirect": "/login"})
-            return RedirectResponse(f"/login?next={path}", status_code=303)
+    path = request.url.path
+    request.state.user = _current_user(request)
+    exempt = any(path == p or path.startswith(p) for p in _AUTH_EXEMPT)
+    if not exempt and request.state.user is None:
+        if request.headers.get("hx-request") == "true":
+            return Response(status_code=401, headers={"HX-Redirect": "/login"})
+        return RedirectResponse(f"/login?next={path}", status_code=303)
     return await call_next(request)
+
+
+def require_user(request: Request) -> dict:
+    user = getattr(request.state, "user", None)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Non connecté")
+    return user
 
 
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, next: str = "/"):
-    if not get_settings().access_password:
+    if _current_user(request):
         return RedirectResponse("/", status_code=303)
     return templates.TemplateResponse(
-        request, "login.html", {"next_url": next, "error": False}
+        request, "login.html", {"next_url": next, "error": None}
     )
 
 
 @app.post("/login")
 def login_submit(
     request: Request,
+    email: str = Form(""),
     password: str = Form(""),
     next: str = Form("/"),
 ):
-    real = get_settings().access_password
-    if real and hmac.compare_digest(password, real):
+    user = db.get_user_by_email(email.strip())
+    if user and auth.verify_password(password, user["password_hash"]):
         target = next if next.startswith("/") else "/"
         resp = RedirectResponse(target, status_code=303)
-        resp.set_cookie(
-            _AUTH_COOKIE,
-            _auth_token(real),
-            max_age=60 * 60 * 24 * 30,
-            httponly=True,
-            samesite="lax",
-            secure=request.url.scheme == "https",
-        )
+        _set_session(resp, request, user["id"])
         return resp
     return templates.TemplateResponse(
-        request, "login.html", {"next_url": next, "error": True}, status_code=401
+        request,
+        "login.html",
+        {"next_url": next, "error": "Email ou mot de passe incorrect."},
+        status_code=401,
     )
+
+
+@app.get("/register", response_class=HTMLResponse)
+def register_form(request: Request):
+    if _current_user(request):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(request, "register.html", {"error": None})
+
+
+@app.post("/register")
+def register_submit(
+    request: Request,
+    email: str = Form(""),
+    password: str = Form(""),
+    password2: str = Form(""),
+):
+    email = email.strip().lower()
+    err = None
+    if not auth.valid_email(email):
+        err = "Adresse email invalide."
+    elif len(password) < auth.MIN_PASSWORD_LEN:
+        err = f"Le mot de passe doit faire au moins {auth.MIN_PASSWORD_LEN} caractères."
+    elif password != password2:
+        err = "Les deux mots de passe ne correspondent pas."
+    elif db.get_user_by_email(email):
+        err = "Un compte existe déjà avec cette adresse."
+    if err:
+        return templates.TemplateResponse(
+            request, "register.html", {"error": err}, status_code=400
+        )
+
+    user = db.create_user(
+        user_id=uuid.uuid4().hex[:12],
+        email=email,
+        password_hash=auth.hash_password(password),
+    )
+    resp = RedirectResponse("/", status_code=303)
+    _set_session(resp, request, user["id"])
+    return resp
 
 
 @app.get("/logout")
 def logout():
     resp = RedirectResponse("/login", status_code=303)
-    resp.delete_cookie(_AUTH_COOKIE)
+    resp.delete_cookie(_SESSION_COOKIE)
     return resp
 
 
-def _note_or_404(note_id: str) -> dict:
+def _owned_note_or_404(note_id: str, user: dict) -> dict:
     note = db.get_note(note_id)
-    if not note:
+    if not note or note.get("user_id") != user["id"]:
         raise HTTPException(status_code=404, detail="Note introuvable")
     return note
 
@@ -182,30 +229,32 @@ def healthz() -> dict:
 
 
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request):
+def index(request: Request, user: dict = Depends(require_user)):
     return templates.TemplateResponse(
         request,
         "index.html",
         {
+            "user": user,
             "max_upload_mb": settings.max_upload_mb,
-            "notes_count": len(db.list_notes()),
+            "notes_count": db.count_notes(user["id"]),
         },
     )
 
 
 @app.get("/notes", response_class=HTMLResponse)
-def notes_list(request: Request):
-    return templates.TemplateResponse(request, "_notes.html", {"notes": db.list_notes()})
+def notes_list(request: Request, user: dict = Depends(require_user)):
+    return templates.TemplateResponse(
+        request, "_notes.html", {"notes": db.list_notes(user["id"])}
+    )
 
 
 @app.get("/notes/{note_id}/row", response_class=HTMLResponse)
-def note_row(request: Request, note_id: str):
+def note_row(request: Request, note_id: str, user: dict = Depends(require_user)):
     """Ligne d'une note, ré-interrogée périodiquement par HTMX tant qu'elle est en cours."""
-    if not db.get_note(note_id):
-        return HTMLResponse("")  # note supprimée entre-temps : la ligne disparaît
-    return templates.TemplateResponse(
-        request, "_note_row.html", {"n": _note_or_404(note_id)}
-    )
+    note = db.get_note(note_id)
+    if not note or note.get("user_id") != user["id"]:
+        return HTMLResponse("")  # note absente / pas à cet utilisateur : ligne vide
+    return templates.TemplateResponse(request, "_note_row.html", {"n": note})
 
 
 def _serve_text_artifact(note: dict, path_key: str, archived_name: str):
@@ -224,19 +273,23 @@ def _serve_text_artifact(note: dict, path_key: str, archived_name: str):
 
 
 @app.get("/notes/{note_id}/transcript")
-def note_transcript(note_id: str):
-    return _serve_text_artifact(_note_or_404(note_id), "transcript_path", "transcript.txt")
+def note_transcript(note_id: str, user: dict = Depends(require_user)):
+    return _serve_text_artifact(
+        _owned_note_or_404(note_id, user), "transcript_path", "transcript.txt"
+    )
 
 
 @app.get("/notes/{note_id}/summary")
-def note_summary(note_id: str):
-    return _serve_text_artifact(_note_or_404(note_id), "summary_path", "summary.md")
+def note_summary(note_id: str, user: dict = Depends(require_user)):
+    return _serve_text_artifact(
+        _owned_note_or_404(note_id, user), "summary_path", "summary.md"
+    )
 
 
 @app.get("/notes/{note_id}/dl/{name}")
-def note_download(note_id: str, name: str):
+def note_download(note_id: str, name: str, user: dict = Depends(require_user)):
     """Redirige vers une URL de téléchargement fraîche pour un fichier archivé."""
-    note = _note_or_404(note_id)
+    note = _owned_note_or_404(note_id, user)
     links = json.loads(note["archive_links"] or "[]")
     entry = next((l for l in links if l.get("name") == name), None)
     if not entry:
@@ -249,9 +302,14 @@ def note_download(note_id: str, name: str):
 
 
 @app.post("/notes/{note_id}/email", response_class=HTMLResponse)
-def note_send_email(request: Request, background: BackgroundTasks, note_id: str):
+def note_send_email(
+    request: Request,
+    background: BackgroundTasks,
+    note_id: str,
+    user: dict = Depends(require_user),
+):
     """(Re)déclenche l'envoi de l'email récapitulatif pour une note."""
-    note = _note_or_404(note_id)
+    note = _owned_note_or_404(note_id, user)
     if not note["summary_path"]:
         raise HTTPException(status_code=409, detail="Résumé pas encore disponible")
     background.add_task(pipeline.run_email, note_id)
@@ -262,9 +320,9 @@ def note_send_email(request: Request, background: BackgroundTasks, note_id: str)
 
 
 @app.delete("/notes/{note_id}")
-def note_delete(note_id: str):
+def note_delete(note_id: str, user: dict = Depends(require_user)):
     """Supprime une note : fichiers archivés (B2), fichiers locaux, ligne en base."""
-    note = _note_or_404(note_id)
+    note = _owned_note_or_404(note_id, user)
 
     for entry in json.loads(note["archive_links"] or "[]"):
         if entry.get("provider") == "b2" and entry.get("key"):
@@ -285,7 +343,12 @@ def note_delete(note_id: str):
 
 
 @app.post("/upload", response_class=HTMLResponse)
-async def upload(request: Request, background: BackgroundTasks, file: UploadFile):
+async def upload(
+    request: Request,
+    background: BackgroundTasks,
+    file: UploadFile,
+    user: dict = Depends(require_user),
+):
     note_id = uuid.uuid4().hex[:12]
     try:
         rel_path, size = await storage.save_upload(file, note_id)
@@ -296,6 +359,7 @@ async def upload(request: Request, background: BackgroundTasks, file: UploadFile
 
     note = db.create_note(
         note_id=note_id,
+        user_id=user["id"],
         original_filename=file.filename or f"{note_id}{Path(rel_path).suffix}",
         stored_path=str(rel_path),
         content_type=file.content_type,

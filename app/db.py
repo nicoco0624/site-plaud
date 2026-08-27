@@ -50,7 +50,17 @@ CREATE TABLE IF NOT EXISTS notes (
     archive_links     TEXT,
     archived_at       TEXT,
     drive_folder_link TEXT,
-    emailed_at        TEXT
+    emailed_at        TEXT,
+    user_id           TEXT
+)
+"""
+
+_CREATE_USERS = """
+CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,
+    email         TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at    TEXT NOT NULL
 )
 """
 
@@ -62,6 +72,7 @@ _MIGRATIONS = [
     ("archived_at", "TEXT"),
     ("drive_folder_link", "TEXT"),
     ("emailed_at", "TEXT"),
+    ("user_id", "TEXT"),
 ]
 
 
@@ -171,15 +182,39 @@ def _q(sql: str, params: tuple = ()) -> list[dict]:
 
 def init_db() -> None:
     _q(_CREATE_TABLE)
+    _q(_CREATE_USERS)
     existing = {r["name"] for r in _q("PRAGMA table_info(notes)")}
     for name, ddl in _MIGRATIONS:
         if name not in existing:
             _q(f"ALTER TABLE notes ADD COLUMN {name} {ddl}")
 
 
+# ----- utilisateurs -----
+
+def create_user(*, user_id: str, email: str, password_hash: str) -> dict:
+    _q(
+        "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+        (user_id, email.lower(), password_hash, _now()),
+    )
+    return get_user(user_id)
+
+
+def get_user(user_id: str) -> dict | None:
+    rows = _q("SELECT * FROM users WHERE id = ?", (user_id,))
+    return rows[0] if rows else None
+
+
+def get_user_by_email(email: str) -> dict | None:
+    rows = _q("SELECT * FROM users WHERE email = ?", (email.lower(),))
+    return rows[0] if rows else None
+
+
+# ----- notes -----
+
 def create_note(
     *,
     note_id: str,
+    user_id: str,
     original_filename: str,
     stored_path: str,
     content_type: str | None,
@@ -189,11 +224,11 @@ def create_note(
     ts = _now()
     _q(
         """
-        INSERT INTO notes (id, created_at, updated_at, original_filename,
+        INSERT INTO notes (id, user_id, created_at, updated_at, original_filename,
                            stored_path, content_type, size_bytes, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (note_id, ts, ts, original_filename, stored_path, content_type,
+        (note_id, user_id, ts, ts, original_filename, stored_path, content_type,
          size_bytes, status),
     )
     return get_note(note_id)
@@ -204,8 +239,16 @@ def get_note(note_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def list_notes(limit: int = 100) -> list[dict]:
-    return _q("SELECT * FROM notes ORDER BY created_at DESC LIMIT ?", (limit,))
+def list_notes(user_id: str, limit: int = 200) -> list[dict]:
+    return _q(
+        "SELECT * FROM notes WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+        (user_id, limit),
+    )
+
+
+def count_notes(user_id: str) -> int:
+    rows = _q("SELECT COUNT(*) AS n FROM notes WHERE user_id = ?", (user_id,))
+    return int(rows[0]["n"]) if rows else 0
 
 
 def update_note(note_id: str, **fields) -> dict | None:
