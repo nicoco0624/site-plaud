@@ -112,10 +112,10 @@ def _attachments(note: dict) -> list[tuple[str, bytes]]:
     return out
 
 
-def _send_resend(settings, subject, text, html, atts) -> str:
+def _send_resend(settings, to, subject, text, html, atts) -> str:
     payload = {
         "from": settings.effective_mail_from,
-        "to": [settings.mail_to],
+        "to": [to],
         "subject": subject,
         "text": text,
         "html": f"<!doctype html><html><body>{html}</body></html>",
@@ -142,14 +142,14 @@ def _send_resend(settings, subject, text, html, atts) -> str:
             json.load(r)
     except urllib.error.HTTPError as e:  # type: ignore[attr-defined]
         raise RuntimeError(f"Resend {e.code}: {e.read().decode()[:200]}") from e
-    return settings.mail_to
+    return to
 
 
-def _send_smtp(settings, subject, text, html, atts) -> str:
+def _send_smtp(settings, to, subject, text, html, atts) -> str:
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = settings.effective_mail_from
-    msg["To"] = settings.mail_to
+    msg["To"] = to
     msg.set_content(text)
     msg.add_alternative(f"<!doctype html><html><body>{html}</body></html>", subtype="html")
     for name, data in atts:
@@ -158,15 +158,16 @@ def _send_smtp(settings, subject, text, html, atts) -> str:
         s.starttls(context=ssl.create_default_context())
         s.login(settings.smtp_user, settings.smtp_password)
         s.send_message(msg)
-    return settings.mail_to
+    return to
 
 
-def send_note_email(note: dict) -> str:
-    """Envoie le récap de la note. Renvoie l'adresse destinataire."""
+def send_note_email(note: dict, recipient: str | None = None) -> str:
+    """Envoie le récap de la note. `recipient` prime sur MAIL_TO ; renvoie l'adresse."""
     settings = get_settings()
-    if not settings.email_enabled:
+    to = recipient or settings.mail_to
+    if not settings.email_enabled or not to:
         raise EmailNotConfigured(
-            "Aucun transport email configuré (RESEND_API_KEY ou SMTP_*, + MAIL_TO)."
+            "Aucun transport email (RESEND_API_KEY ou SMTP_*) ou pas de destinataire."
         )
 
     summary = _load_summary(note)
@@ -175,5 +176,5 @@ def send_note_email(note: dict) -> str:
     atts = _attachments(note)
 
     if settings.email_provider == "resend":
-        return _send_resend(settings, subject, text, html, atts)
-    return _send_smtp(settings, subject, text, html, atts)
+        return _send_resend(settings, to, subject, text, html, atts)
+    return _send_smtp(settings, to, subject, text, html, atts)

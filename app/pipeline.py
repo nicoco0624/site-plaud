@@ -192,26 +192,28 @@ def run_archive(note_id: str) -> None:
 
 
 def run_email(note_id: str) -> None:
-    """Envoie l'email récapitulatif de la note (Gmail SMTP)."""
+    """Envoie l'email récapitulatif à l'adresse du propriétaire de la note."""
     note = db.get_note(note_id)
     if not note:
         return
     # On garde une éventuelle alerte d'archivage : l'email ne doit pas l'effacer.
     prior_error = note["error"]
 
-    if not get_settings().email_enabled:
+    owner = db.get_user(note["user_id"]) if note.get("user_id") else None
+    recipient = owner["email"] if owner else None
+
+    if not get_settings().email_enabled or not recipient:
         db.update_note(
             note_id,
-            error=prior_error
-            or "Email : non configuré (SMTP_USER / SMTP_PASSWORD / MAIL_TO).",
+            error=prior_error or "Email : transport non configuré.",
         )
-        log.info("note %s : email désactivé, envoi ignoré", note_id)
+        log.info("note %s : email non envoyé (config/destinataire)", note_id)
         return
 
     resume_status = note["status"] if note["status"] != db.STATUS_SENDING else db.STATUS_ARCHIVED
     db.update_note(note_id, status=db.STATUS_SENDING)
     try:
-        to = mailer.send_note_email(db.get_note(note_id))
+        to = mailer.send_note_email(db.get_note(note_id), recipient=recipient)
     except Exception as exc:  # noqa: BLE001
         # L'email est la dernière étape, optionnelle : on n'échoue pas la note.
         log.warning("envoi email échoué pour %s : %s", note_id, exc)

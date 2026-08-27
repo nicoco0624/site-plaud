@@ -97,7 +97,9 @@ class Settings(BaseSettings):
 
     @property
     def email_enabled(self) -> bool:
-        return self.email_provider != "none" and bool(self.mail_to)
+        # Le destinataire vient de l'utilisateur connecté ; MAIL_TO n'est qu'un
+        # repli optionnel, donc un transport configuré suffit.
+        return self.email_provider != "none"
 
     @property
     def effective_mail_from(self) -> str:
