@@ -1,22 +1,30 @@
-# --- Étapes 0 & 1 : squelette + upload ---
-fastapi>=0.115
-uvicorn[standard]>=0.34
-jinja2>=3.1
-python-multipart>=0.0.18
-pydantic-settings>=2.7
-python-dotenv>=1.0
+# Dépendances épinglées (A03/A08 — chaîne d'appro). Versions testées ;
+# mise à jour manuelle et volontaire uniquement.
+#
+# Provenance : toutes sur PyPI, éditeurs officiels —
+#   fastapi/starlette/uvicorn (tiangolo), pydantic (pydantic),
+#   groq (Groq Inc.), boto3/botocore/s3transfer (AWS),
+#   google-* (Google LLC), jinja2 (Pallets).
+# Aucune dépendance git/URL, aucun --extra-index-url.
+# Whisper et le LLM tournent chez Groq (API) : aucun modèle/poids embarqué.
 
-# --- Étape 2 & 3 : transcription + résumé (Groq) ---
-groq>=1.7
+# --- Web ---
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn[standard]==0.52.4
+jinja2==3.1.6
+python-multipart==0.0.32
+pydantic==2.13.4
+pydantic-settings==2.15.0
+python-dotenv==1.2.3
 
-# --- Étape 4 : archivage ---
-# Backblaze B2 (API compatible S3) : stockage en ligne principal
-boto3>=1.43
-# Google Drive : conservé, utilisable en local (facultatif)
-google-api-python-client>=2.199
-google-auth-oauthlib>=1.4
-google-auth-httplib2>=0.4
+# --- Transcription + résumé (Groq) ---
+groq==1.7.0
 
-# --- Étapes suivantes (ajoutées au fur et à mesure) ---
-# mega.py                        # étape 4b : archivage MEGA (fichiers volumineux)
-# libsql-experimental>=0.1       # étape 6 : bascule SQLite -> Turso (déploiement)
+# --- Archivage Backblaze B2 (API S3) ---
+boto3==1.43.80
+
+# --- Google Drive (option locale, non utilisé en prod) ---
+google-api-python-client==2.199.0
+google-auth-oauthlib==1.4.1
+google-auth-httplib2==0.4.2

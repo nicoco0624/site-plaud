@@ -8,6 +8,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Racine du projet (dossier qui contient ce paquet "app").
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+_DEFAULT_SECRET_KEY = "dev-insecure-change-me"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -20,11 +22,26 @@ class Settings(BaseSettings):
     # libsql://xxx.turso.io ou https://xxx.turso.io -> Turso (+ turso_auth_token)
     database_url: str = "sqlite:///data/plaud.db"
     turso_auth_token: str = ""
-    max_upload_mb: int = 200
+    max_upload_mb: int = 50
+
+    # Sécurité / garde-fous
+    allowed_hosts: str = "*"          # liste séparée par des virgules, ou "*"
+    max_uploads_per_day: int = 20     # quota d'uploads par utilisateur / 24 h
+    max_notes_per_user: int = 100     # nombre total de notes par utilisateur
+    session_days: int = 30
 
     @property
     def db_backend(self) -> str:
         return "turso" if self.database_url.startswith(("libsql://", "https://")) else "sqlite"
+
+    @property
+    def is_prod(self) -> bool:
+        """Heuristique : on est « en prod » dès qu'on parle à Turso."""
+        return self.db_backend == "turso"
+
+    @property
+    def allowed_hosts_list(self) -> list[str]:
+        return [h.strip() for h in self.allowed_hosts.split(",") if h.strip()]
 
     # --- Groq (étapes 2 & 3) ---
     groq_api_key: str = ""
@@ -75,9 +92,17 @@ class Settings(BaseSettings):
     #    est bloqué (Render). Sans domaine vérifié : from = onboarding@resend.dev,
     #    destinataire = l'adresse du compte Resend.
     #  - SMTP Gmail : pratique en local (mot de passe d'application).
-    # Clé de signature des cookies de session. À définir en prod (stable entre
-    # redémarrages, sinon toutes les sessions sautent).
-    secret_key: str = "dev-insecure-change-me"
+    # Clé de signature des cookies de session. DOIT être définie en prod
+    # (stable entre redémarrages, sinon toutes les sessions sautent).
+    secret_key: str = _DEFAULT_SECRET_KEY
+
+    def assert_secure(self) -> None:
+        """Refuse de démarrer en prod avec des réglages dangereux."""
+        if self.is_prod and self.secret_key == _DEFAULT_SECRET_KEY:
+            raise RuntimeError(
+                "SECRET_KEY non défini en production : les sessions seraient "
+                "falsifiables. Définis la variable d'environnement SECRET_KEY."
+            )
 
     resend_api_key: str = ""
     smtp_host: str = "smtp.gmail.com"

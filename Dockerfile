@@ -21,4 +21,7 @@ USER user
 # L'hébergeur fournit $PORT (Render : 10000). 7860 par défaut en local.
 ENV PORT=7860
 EXPOSE 7860
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
+# --forwarded-allow-ips : faire confiance au X-Forwarded-Proto du proxy Render
+#   (sinon request.url.scheme reste "http" -> cookies de session non "Secure").
+# --no-server-header : ne pas exposer "server: uvicorn".
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860} --forwarded-allow-ips='*' --no-server-header --proxy-headers"]

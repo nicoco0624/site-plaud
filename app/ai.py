@@ -1,6 +1,7 @@
 """Appels à l'API Groq : transcription (étape 2) et résumé (étape 3)."""
 
 import json
+import re
 from pathlib import Path
 
 from groq import Groq
@@ -88,6 +89,9 @@ def summarize(transcript: str) -> dict:
         out[key] = val
     if not out["titre"]:
         out["titre"] = (out["resume"][:77] + "…") if out["resume"] else "Note sans titre"
+    # Titre sur une seule ligne, borné : sert d'objet d'email (anti-injection
+    # d'en-têtes) et de titre affiché.
+    out["titre"] = re.sub(r"\s+", " ", str(out["titre"])).strip()[:120] or "Note"
     return out
 
 

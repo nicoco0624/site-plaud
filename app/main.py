@@ -1,16 +1,12 @@
 """Point d'entrée FastAPI — Site Plaud.
 
-Étape 0 : squelette (config, base SQLite, page d'accueil, healthcheck).
-Étape 1 : upload de fichiers audio (drag & drop + bouton) -> statut "uploaded".
-Étape 2 : transcription Groq en tâche de fond, statut suivi par polling HTMX,
-          consultation du texte transcrit.
-Étape 3 : résumé structuré (titre + synthèse + points clés + actions) enchaîné
-          après la transcription, consultable en Markdown.
-Étape 4 : archivage automatique en ligne (Backblaze B2 par défaut, Drive en option).
-Étape 5 : envoi d'un email récapitulatif (Gmail SMTP), renvoyable manuellement.
+Pipeline : upload (fichier ou micro) -> transcription (Groq Whisper) -> résumé
+(Groq LLM) -> archivage (Backblaze B2) -> email récapitulatif (Resend / SMTP).
+Comptes email + mot de passe, notes cloisonnées par utilisateur.
 """
 
 import json
+import logging
 import shutil
 import uuid
 from contextlib import asynccontextmanager
@@ -26,12 +22,24 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app import auth, b2, db, pipeline, storage
+from app import auth, b2, db, pipeline, ratelimit, storage
 from app.config import BASE_DIR, get_settings
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+slog = logging.getLogger("plaud.security")
 
 settings = get_settings()
 
@@ -61,15 +69,48 @@ STATUS_LABELS = {
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    settings.assert_secure()
     settings.upload_path.mkdir(parents=True, exist_ok=True)
     db.init_db()
+    slog.info("démarrage (prod=%s, backend=%s)", settings.is_prod, settings.db_backend)
     yield
 
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app = FastAPI(title=settings.app_name, lifespan=lifespan, docs_url=None, redoc_url=None,
+              openapi_url=None)
 _STATIC_DIR = BASE_DIR / "app" / "static"
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "app" / "templates")
+
+if settings.allowed_hosts_list and settings.allowed_hosts_list != ["*"]:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts_list)
+
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self'; "
+    "img-src 'self' data:; "
+    "font-src 'self'; "
+    "connect-src 'self'; "
+    "form-action 'self'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'; "
+    "object-src 'none'"
+)
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "?"
+
+
+def _safe_next(value: str) -> str:
+    """Empêche l'open redirect : n'accepte qu'un chemin interne."""
+    if value.startswith("/") and not value.startswith(("//", "/\\")):
+        return value
+    return "/"
 
 
 def _asset_version(name: str) -> str:
@@ -101,20 +142,28 @@ templates.env.globals["STATUS_LABELS"] = STATUS_LABELS
 #  Comptes : email + mot de passe, session par cookie signé.
 # --------------------------------------------------------------------------- #
 _SESSION_COOKIE = "plaud_session"
-_SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 jours
-_AUTH_EXEMPT = ("/login", "/register", "/logout", "/healthz", "/static/", "/favicon.ico")
+_EXEMPT_EXACT = {"/login", "/register", "/logout", "/healthz", "/favicon.ico"}
+_EXEMPT_PREFIX = ("/static/",)
+_SENSITIVE_USER_FIELDS = {"password_hash"}
+
+
+def _public_user(row: dict | None) -> dict | None:
+    """Retire les champs sensibles avant de faire circuler l'utilisateur."""
+    if not row:
+        return None
+    return {k: v for k, v in row.items() if k not in _SENSITIVE_USER_FIELDS}
 
 
 def _current_user(request: Request) -> dict | None:
     uid = auth.unsign(request.cookies.get(_SESSION_COOKIE, ""))
-    return db.get_user(uid) if uid else None
+    return _public_user(db.get_user(uid)) if uid else None
 
 
 def _set_session(resp: Response, request: Request, user_id: str) -> None:
     resp.set_cookie(
         _SESSION_COOKIE,
         auth.sign(user_id),
-        max_age=_SESSION_MAX_AGE,
+        max_age=60 * 60 * 24 * settings.session_days,
         httponly=True,
         samesite="lax",
         secure=request.url.scheme == "https",
@@ -125,12 +174,32 @@ def _set_session(resp: Response, request: Request, user_id: str) -> None:
 async def _auth_gate(request: Request, call_next):
     path = request.url.path
     request.state.user = _current_user(request)
-    exempt = any(path == p or path.startswith(p) for p in _AUTH_EXEMPT)
+    exempt = path in _EXEMPT_EXACT or path.startswith(_EXEMPT_PREFIX)
     if not exempt and request.state.user is None:
         if request.headers.get("hx-request") == "true":
             return Response(status_code=401, headers={"HX-Redirect": "/login"})
-        return RedirectResponse(f"/login?next={path}", status_code=303)
+        return RedirectResponse(f"/login?next={_safe_next(path)}", status_code=303)
     return await call_next(request)
+
+
+# Enregistré en dernier -> couche la plus externe : les en-têtes de sécurité
+# s'appliquent à TOUTES les réponses, y compris les redirections d'auth.
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers.setdefault("Content-Security-Policy", _CSP)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "same-origin")
+    resp.headers.setdefault(
+        "Permissions-Policy", "geolocation=(), camera=(), microphone=(self)"
+    )
+    resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    if request.url.scheme == "https":
+        resp.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return resp
 
 
 def require_user(request: Request) -> dict:
@@ -156,16 +225,33 @@ def login_submit(
     password: str = Form(""),
     next: str = Form("/"),
 ):
-    user = db.get_user_by_email(email.strip())
+    ip = _client_ip(request)
+    email = email.strip().lower()
+    if not (ratelimit.allow(f"login-ip:{ip}", 15, 900)
+            and ratelimit.allow(f"login-acct:{email}", 6, 900)):
+        slog.warning("login rate-limit ip=%s email=%s", ip, email)
+        return templates.TemplateResponse(
+            request, "login.html",
+            {"next_url": _safe_next(next),
+             "error": "Trop de tentatives. Réessaie dans quelques minutes."},
+            status_code=429,
+        )
+
+    user = db.get_user_by_email(email)
     if user and auth.verify_password(password, user["password_hash"]):
-        target = next if next.startswith("/") else "/"
-        resp = RedirectResponse(target, status_code=303)
+        ratelimit.reset(f"login-acct:{email}")
+        slog.info("login ok email=%s ip=%s", email, ip)
+        resp = RedirectResponse(_safe_next(next), status_code=303)
         _set_session(resp, request, user["id"])
         return resp
+
+    if not user:
+        auth.dummy_verify(password)  # égalise le temps de réponse
+    slog.warning("login échoué email=%s ip=%s", email, ip)
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"next_url": next, "error": "Email ou mot de passe incorrect."},
+        {"next_url": _safe_next(next), "error": "Email ou mot de passe incorrect."},
         status_code=401,
     )
 
@@ -184,12 +270,22 @@ def register_submit(
     password: str = Form(""),
     password2: str = Form(""),
 ):
+    ip = _client_ip(request)
+    if not ratelimit.allow(f"register-ip:{ip}", 5, 3600):
+        slog.warning("register rate-limit ip=%s", ip)
+        return templates.TemplateResponse(
+            request, "register.html",
+            {"error": "Trop d'inscriptions depuis cette adresse. Réessaie plus tard."},
+            status_code=429,
+        )
+
     email = email.strip().lower()
     err = None
     if not auth.valid_email(email):
         err = "Adresse email invalide."
-    elif len(password) < auth.MIN_PASSWORD_LEN:
-        err = f"Le mot de passe doit faire au moins {auth.MIN_PASSWORD_LEN} caractères."
+    elif not (auth.MIN_PASSWORD_LEN <= len(password) <= auth.MAX_PASSWORD_LEN):
+        err = (f"Le mot de passe doit faire entre {auth.MIN_PASSWORD_LEN} et "
+               f"{auth.MAX_PASSWORD_LEN} caractères.")
     elif password != password2:
         err = "Les deux mots de passe ne correspondent pas."
     elif db.get_user_by_email(email):
@@ -204,28 +300,36 @@ def register_submit(
         email=email,
         password_hash=auth.hash_password(password),
     )
+    slog.info("register email=%s ip=%s", email, ip)
     resp = RedirectResponse("/", status_code=303)
     _set_session(resp, request, user["id"])
     return resp
 
 
 @app.get("/logout")
-def logout():
+@app.post("/logout")
+def logout(request: Request):
+    user = getattr(request.state, "user", None)
+    if user:
+        slog.info("logout email=%s", user.get("email"))
     resp = RedirectResponse("/login", status_code=303)
     resp.delete_cookie(_SESSION_COOKIE)
     return resp
 
 
-def _owned_note_or_404(note_id: str, user: dict) -> dict:
+def _owned_note_or_404(note_id: str, user: dict, request: Request) -> dict:
     note = db.get_note(note_id)
     if not note or note.get("user_id") != user["id"]:
+        if note:  # existe mais appartient à quelqu'un d'autre
+            slog.warning("accès refusé note=%s par user=%s ip=%s",
+                         note_id, user["id"], _client_ip(request))
         raise HTTPException(status_code=404, detail="Note introuvable")
     return note
 
 
 @app.get("/healthz")
 def healthz() -> dict:
-    return {"status": "ok", "app": settings.app_name}
+    return {"status": "ok"}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -257,15 +361,24 @@ def note_row(request: Request, note_id: str, user: dict = Depends(require_user))
     return templates.TemplateResponse(request, "_note_row.html", {"n": note})
 
 
+def _resolve_inside(rel: str) -> Path | None:
+    """Résout un chemin relatif et vérifie qu'il reste sous BASE_DIR."""
+    p = (BASE_DIR / rel).resolve()
+    return p if p.is_relative_to(BASE_DIR.resolve()) else None
+
+
 def _serve_text_artifact(note: dict, path_key: str, archived_name: str):
     """Sert un fichier texte local ; s'il a disparu (disque éphémère après
     redémarrage), redirige vers la copie archivée."""
     rel = note[path_key]
     if not rel:
         raise HTTPException(status_code=409, detail="Pas encore disponible")
-    local = BASE_DIR / rel
-    if local.exists():
-        return PlainTextResponse(local.read_text(encoding="utf-8"))
+    local = _resolve_inside(rel)
+    if local and local.is_file():
+        try:
+            return PlainTextResponse(local.read_text(encoding="utf-8"))
+        except OSError:
+            pass
     links = json.loads(note["archive_links"] or "[]")
     if any(l.get("name") == archived_name for l in links):
         return RedirectResponse(f"/notes/{note['id']}/dl/{archived_name}")
@@ -273,30 +386,35 @@ def _serve_text_artifact(note: dict, path_key: str, archived_name: str):
 
 
 @app.get("/notes/{note_id}/transcript")
-def note_transcript(note_id: str, user: dict = Depends(require_user)):
+def note_transcript(request: Request, note_id: str, user: dict = Depends(require_user)):
     return _serve_text_artifact(
-        _owned_note_or_404(note_id, user), "transcript_path", "transcript.txt"
+        _owned_note_or_404(note_id, user, request), "transcript_path", "transcript.txt"
     )
 
 
 @app.get("/notes/{note_id}/summary")
-def note_summary(note_id: str, user: dict = Depends(require_user)):
+def note_summary(request: Request, note_id: str, user: dict = Depends(require_user)):
     return _serve_text_artifact(
-        _owned_note_or_404(note_id, user), "summary_path", "summary.md"
+        _owned_note_or_404(note_id, user, request), "summary_path", "summary.md"
     )
 
 
 @app.get("/notes/{note_id}/dl/{name}")
-def note_download(note_id: str, name: str, user: dict = Depends(require_user)):
+def note_download(
+    request: Request, note_id: str, name: str, user: dict = Depends(require_user)
+):
     """Redirige vers une URL de téléchargement fraîche pour un fichier archivé."""
-    note = _owned_note_or_404(note_id, user)
-    links = json.loads(note["archive_links"] or "[]")
-    entry = next((l for l in links if l.get("name") == name), None)
+    note = _owned_note_or_404(note_id, user, request)
+    # `name` sert uniquement à retrouver une entrée, jamais à construire un chemin.
+    entry = next(
+        (l for l in json.loads(note["archive_links"] or "[]") if l.get("name") == name),
+        None,
+    )
     if not entry:
         raise HTTPException(status_code=404, detail="Fichier introuvable")
-    if entry["provider"] == "b2":
+    if entry.get("provider") == "b2" and entry.get("key"):
         return RedirectResponse(b2.presigned_url(entry["key"], expires=3600))
-    if entry["provider"] == "gdrive" and entry.get("link"):
+    if entry.get("provider") == "gdrive" and entry.get("link"):
         return RedirectResponse(entry["link"])
     raise HTTPException(status_code=409, detail="Lien de téléchargement indisponible")
 
@@ -309,9 +427,12 @@ def note_send_email(
     user: dict = Depends(require_user),
 ):
     """(Re)déclenche l'envoi de l'email récapitulatif pour une note."""
-    note = _owned_note_or_404(note_id, user)
+    note = _owned_note_or_404(note_id, user, request)
     if not note["summary_path"]:
         raise HTTPException(status_code=409, detail="Résumé pas encore disponible")
+    if not ratelimit.allow(f"email:{user['id']}", 12, 3600):
+        raise HTTPException(status_code=429, detail="Trop d'envois. Réessaie plus tard.")
+    slog.info("email manuel note=%s user=%s", note_id, user["id"])
     background.add_task(pipeline.run_email, note_id)
     db.update_note(note_id, status=db.STATUS_SENDING, error=None)
     return templates.TemplateResponse(
@@ -320,25 +441,23 @@ def note_send_email(
 
 
 @app.delete("/notes/{note_id}")
-def note_delete(note_id: str, user: dict = Depends(require_user)):
+def note_delete(request: Request, note_id: str, user: dict = Depends(require_user)):
     """Supprime une note : fichiers archivés (B2), fichiers locaux, ligne en base."""
-    note = _owned_note_or_404(note_id, user)
+    note = _owned_note_or_404(note_id, user, request)
 
     for entry in json.loads(note["archive_links"] or "[]"):
         if entry.get("provider") == "b2" and entry.get("key"):
             try:
                 b2.delete(entry["key"])
             except Exception:  # noqa: BLE001 — best effort
-                pass
+                slog.warning("échec suppression B2 key=%s", entry["key"])
 
-    try:
-        note_dir = (BASE_DIR / note["stored_path"]).parent
-        if note_dir.is_dir() and note_dir != BASE_DIR:
-            shutil.rmtree(note_dir, ignore_errors=True)
-    except Exception:  # noqa: BLE001
-        pass
+    local = _resolve_inside(str(Path(note["stored_path"]).parent))
+    if local and local.is_dir() and local != BASE_DIR.resolve():
+        shutil.rmtree(local, ignore_errors=True)
 
     db.delete_note(note_id)
+    slog.info("note supprimée note=%s user=%s", note_id, user["id"])
     return Response(status_code=200, headers={"HX-Trigger": "refreshNotes"})
 
 
@@ -349,12 +468,44 @@ async def upload(
     file: UploadFile,
     user: dict = Depends(require_user),
 ):
+    ip = _client_ip(request)
+
+    # Quotas anti-abus (Groq / stockage).
+    if not ratelimit.allow(f"upload:{user['id']}", settings.max_uploads_per_day, 86400):
+        return templates.TemplateResponse(
+            request, "_upload_result.html",
+            {"error": f"Limite de {settings.max_uploads_per_day} envois / jour atteinte."},
+            status_code=429,
+        )
+    if db.count_notes(user["id"]) >= settings.max_notes_per_user:
+        return templates.TemplateResponse(
+            request, "_upload_result.html",
+            {"error": f"Maximum {settings.max_notes_per_user} notes. Supprimes-en avant d'en ajouter."},
+            status_code=409,
+        )
+
+    # Rejet précoce si l'en-tête annonce déjà une taille hors limite.
+    clen = request.headers.get("content-length")
+    if clen and clen.isdigit() and int(clen) > settings.max_upload_bytes + 4096:
+        return templates.TemplateResponse(
+            request, "_upload_result.html",
+            {"error": f"Fichier trop volumineux (limite : {settings.max_upload_mb} Mo)."},
+            status_code=413,
+        )
+
     note_id = uuid.uuid4().hex[:12]
     try:
         rel_path, size = await storage.save_upload(file, note_id)
     except (storage.UnsupportedFormat, storage.UploadTooLarge) as exc:
         return templates.TemplateResponse(
             request, "_upload_result.html", {"error": str(exc)}, status_code=400
+        )
+    except Exception:  # noqa: BLE001
+        slog.exception("échec écriture upload user=%s ip=%s", user["id"], ip)
+        return templates.TemplateResponse(
+            request, "_upload_result.html",
+            {"error": "Impossible d'enregistrer le fichier. Réessaie."},
+            status_code=500,
         )
 
     note = db.create_note(
@@ -365,9 +516,18 @@ async def upload(
         content_type=file.content_type,
         size_bytes=size,
     )
-    # Étape 2 : la transcription démarre en tâche de fond dès la réponse envoyée.
+    slog.info("upload note=%s user=%s taille=%d ip=%s", note_id, user["id"], size, ip)
     background.add_task(pipeline.run_transcription, note_id)
 
     resp = templates.TemplateResponse(request, "_upload_result.html", {"note": note})
     resp.headers["HX-Trigger"] = "refreshNotes"
     return resp
+
+
+@app.exception_handler(Exception)
+async def _unhandled(request: Request, exc: Exception):
+    """Filet de sécurité : journalise et renvoie une erreur générique (pas de trace)."""
+    slog.exception("erreur non gérée sur %s %s", request.method, request.url.path)
+    if request.headers.get("hx-request") == "true" or request.url.path.startswith("/notes"):
+        return JSONResponse({"detail": "Erreur interne"}, status_code=500)
+    return PlainTextResponse("Erreur interne", status_code=500)

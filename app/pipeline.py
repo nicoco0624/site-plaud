@@ -32,9 +32,12 @@ def run_transcription(note_id: str) -> None:
 
     try:
         text = ai.transcribe(audio_path)
-    except Exception as exc:  # noqa: BLE001 — job de fond : on capture tout
+    except Exception:  # noqa: BLE001 — job de fond : on capture tout
         log.exception("transcription échouée pour %s", note_id)
-        db.update_note(note_id, status=db.STATUS_ERROR, error=f"Transcription : {exc}")
+        db.update_note(
+            note_id, status=db.STATUS_ERROR,
+            error="La transcription a échoué. Réessaie plus tard.",
+        )
         return
 
     transcript_path = audio_path.parent / "transcript.txt"
@@ -73,9 +76,12 @@ def run_summary(note_id: str, transcript: str | None = None) -> None:
         db.update_note(note_id, status=db.STATUS_SUMMARIZING, error=None)
         try:
             summary = ai.summarize(transcript)
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             log.exception("résumé échoué pour %s", note_id)
-            db.update_note(note_id, status=db.STATUS_ERROR, error=f"Résumé : {exc}")
+            db.update_note(
+                note_id, status=db.STATUS_ERROR,
+                error="Le résumé a échoué. Réessaie plus tard.",
+            )
             return
 
     (audio_dir / "summary.json").write_text(
@@ -164,9 +170,12 @@ def run_archive(note_id: str) -> None:
             links, folder_link = _archive_drive(note, files)
     except Exception as exc:  # noqa: BLE001
         # Archivage non bloquant : transcription et résumé restent accessibles,
-        # l'email doit quand même partir. On signale juste le souci.
+        # l'email doit quand même partir. On signale juste le souci (détail en log).
         log.warning("archivage %s (%s) échoué : %s", note_id, backend, exc)
-        db.update_note(note_id, status=db.STATUS_DONE, error=f"Archivage : {exc}")
+        db.update_note(
+            note_id, status=db.STATUS_DONE,
+            error="L'archivage en ligne a échoué (transcription et résumé restent dispo).",
+        )
         run_email(note_id)
         return
 
@@ -217,7 +226,10 @@ def run_email(note_id: str) -> None:
     except Exception as exc:  # noqa: BLE001
         # L'email est la dernière étape, optionnelle : on n'échoue pas la note.
         log.warning("envoi email échoué pour %s : %s", note_id, exc)
-        db.update_note(note_id, status=resume_status, error=f"Email : {exc}")
+        db.update_note(
+            note_id, status=resume_status,
+            error="L'email récapitulatif n'a pas pu être envoyé.",
+        )
         return
 
     db.update_note(

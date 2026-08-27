@@ -11,9 +11,18 @@ import re
 
 from app.config import get_settings
 
-_PBKDF2_ROUNDS = 200_000
+_PBKDF2_ROUNDS = 300_000
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MIN_PASSWORD_LEN = 8
+MAX_PASSWORD_LEN = 128  # borne : évite un DoS pbkdf2 avec un mot de passe géant
+
+# Haché « bidon » au bon format : sert à égaliser le temps de réponse du login
+# quand l'email n'existe pas (sinon oracle temporel d'énumération).
+_DUMMY_HASH = (
+    "pbkdf2_sha256$300000$"
+    "00000000000000000000000000000000$"
+    "0000000000000000000000000000000000000000000000000000000000000000"
+)
 
 
 # ---------- mots de passe ----------
@@ -26,7 +35,7 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, stored: str) -> bool:
     try:
-        algo, rounds, salt_hex, hash_hex = stored.split("$")
+        algo, rounds, salt_hex, hash_hex = (stored or "").split("$")
         if algo != "pbkdf2_sha256":
             return False
         dk = hashlib.pbkdf2_hmac(
@@ -35,6 +44,11 @@ def verify_password(password: str, stored: str) -> bool:
         return hmac.compare_digest(dk.hex(), hash_hex)
     except (ValueError, AttributeError):
         return False
+
+
+def dummy_verify(password: str) -> None:
+    """Consomme ~le même temps qu'un verify réel (login sur email inconnu)."""
+    verify_password(password, _DUMMY_HASH)
 
 
 def valid_email(email: str) -> bool:
