@@ -45,4 +45,11 @@
     {% endif %}
   </td>
   <td>{{ n.created_at.replace("T", " ")[:16] }}</td>
+  <td>
+    <button class="del-btn"
+            hx-delete="/notes/{{ n.id }}"
+            hx-confirm="Supprimer définitivement cette note (transcription, résumé, archive) ?"
+            hx-swap="none"
+            title="Supprimer la note">✕</button>
+  </td>
 </tr>

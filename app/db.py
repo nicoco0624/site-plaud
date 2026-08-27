@@ -215,3 +215,7 @@ def update_note(note_id: str, **fields) -> dict | None:
     cols = ", ".join(f"{k} = ?" for k in fields)
     _q(f"UPDATE notes SET {cols} WHERE id = ?", (*fields.values(), note_id))
     return get_note(note_id)
+
+
+def delete_note(note_id: str) -> None:
+    _q("DELETE FROM notes WHERE id = ?", (note_id,))

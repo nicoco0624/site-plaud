@@ -41,6 +41,12 @@ def upload(local_path: Path, key: str) -> str:
     return key
 
 
+def delete(key: str) -> None:
+    """Supprime un objet du bucket."""
+    s = get_settings()
+    _client().delete_object(Bucket=s.b2_bucket, Key=key)
+
+
 def presigned_url(key: str, expires: int = 3600) -> str:
     """URL de téléchargement temporaire pour un objet privé."""
     s = get_settings()

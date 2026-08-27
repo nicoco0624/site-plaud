@@ -11,11 +11,12 @@
 """
 
 import json
+import shutil
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -119,6 +120,8 @@ def notes_list(request: Request):
 @app.get("/notes/{note_id}/row", response_class=HTMLResponse)
 def note_row(request: Request, note_id: str):
     """Ligne d'une note, ré-interrogée périodiquement par HTMX tant qu'elle est en cours."""
+    if not db.get_note(note_id):
+        return HTMLResponse("")  # note supprimée entre-temps : la ligne disparaît
     return templates.TemplateResponse(
         request, "_note_row.html", {"n": _note_or_404(note_id)}
     )
@@ -175,6 +178,29 @@ def note_send_email(request: Request, background: BackgroundTasks, note_id: str)
     return templates.TemplateResponse(
         request, "_note_row.html", {"n": db.get_note(note_id)}
     )
+
+
+@app.delete("/notes/{note_id}")
+def note_delete(note_id: str):
+    """Supprime une note : fichiers archivés (B2), fichiers locaux, ligne en base."""
+    note = _note_or_404(note_id)
+
+    for entry in json.loads(note["archive_links"] or "[]"):
+        if entry.get("provider") == "b2" and entry.get("key"):
+            try:
+                b2.delete(entry["key"])
+            except Exception:  # noqa: BLE001 — best effort
+                pass
+
+    try:
+        note_dir = (BASE_DIR / note["stored_path"]).parent
+        if note_dir.is_dir() and note_dir != BASE_DIR:
+            shutil.rmtree(note_dir, ignore_errors=True)
+    except Exception:  # noqa: BLE001
+        pass
+
+    db.delete_note(note_id)
+    return Response(status_code=200, headers={"HX-Trigger": "refreshNotes"})
 
 
 @app.post("/upload", response_class=HTMLResponse)
