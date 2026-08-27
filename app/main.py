@@ -5,6 +5,7 @@ Pipeline : upload (fichier ou micro) -> transcription (Groq Whisper) -> résumé
 Comptes email + mot de passe, notes cloisonnées par utilisateur.
 """
 
+import hmac
 import json
 import logging
 import shutil
@@ -142,7 +143,8 @@ templates.env.globals["STATUS_LABELS"] = STATUS_LABELS
 #  Comptes : email + mot de passe, session par cookie signé.
 # --------------------------------------------------------------------------- #
 _SESSION_COOKIE = "plaud_session"
-_EXEMPT_EXACT = {"/login", "/register", "/logout", "/healthz", "/favicon.ico"}
+_GATE_COOKIE = "plaud_gate"
+_EXEMPT_EXACT = {"/login", "/register", "/logout", "/gate", "/healthz", "/favicon.ico"}
 _EXEMPT_PREFIX = ("/static/",)
 _SENSITIVE_USER_FIELDS = {"password_hash"}
 
@@ -172,16 +174,73 @@ def _set_session(resp: Response, request: Request, user_id: str) -> None:
     )
 
 
+def _wants_hx(request: Request) -> bool:
+    return request.headers.get("hx-request") == "true"
+
+
 @app.middleware("http")
 async def _auth_gate(request: Request, call_next):
     path = request.url.path
+    if path.startswith(_EXEMPT_PREFIX) or path in {"/healthz", "/favicon.ico"}:
+        return await call_next(request)
+
+    # 1) Porte d'accès au site (mot de passe partagé), si configurée.
+    gate_pw = settings.access_password
+    if gate_pw and path != "/gate":
+        if not auth.gate_ok(request.cookies.get(_GATE_COOKIE, ""), gate_pw):
+            if _wants_hx(request):
+                return Response(status_code=401, headers={"HX-Redirect": "/gate"})
+            return RedirectResponse(f"/gate?next={_safe_next(path)}", status_code=303)
+
+    # 2) Session de compte (email + mot de passe).
     request.state.user = _current_user(request)
-    exempt = path in _EXEMPT_EXACT or path.startswith(_EXEMPT_PREFIX)
-    if not exempt and request.state.user is None:
-        if request.headers.get("hx-request") == "true":
+    if path not in _EXEMPT_EXACT and request.state.user is None:
+        if _wants_hx(request):
             return Response(status_code=401, headers={"HX-Redirect": "/login"})
         return RedirectResponse(f"/login?next={_safe_next(path)}", status_code=303)
     return await call_next(request)
+
+
+@app.get("/gate", response_class=HTMLResponse)
+def gate_form(request: Request, next: str = "/"):
+    if not settings.access_password:
+        return RedirectResponse("/", status_code=303)
+    if auth.gate_ok(request.cookies.get(_GATE_COOKIE, ""), settings.access_password):
+        return RedirectResponse(_safe_next(next), status_code=303)
+    return templates.TemplateResponse(
+        request, "gate.html", {"next_url": next, "error": None}
+    )
+
+
+@app.post("/gate")
+def gate_submit(request: Request, password: str = Form(""), next: str = Form("/")):
+    ip = _client_ip(request)
+    if not ratelimit.allow(f"gate:{ip}", 12, 900):
+        slog.warning("gate rate-limit ip=%s", ip)
+        return templates.TemplateResponse(
+            request, "gate.html",
+            {"next_url": _safe_next(next),
+             "error": "Trop de tentatives. Réessaie dans quelques minutes."},
+            status_code=429,
+        )
+    if settings.access_password and hmac.compare_digest(password, settings.access_password):
+        resp = RedirectResponse(_safe_next(next), status_code=303)
+        resp.set_cookie(
+            _GATE_COOKIE,
+            auth.gate_token(settings.access_password),
+            max_age=60 * 60 * 24 * 90,
+            httponly=True,
+            samesite="lax",
+            secure=request.url.scheme == "https",
+        )
+        slog.info("gate ok ip=%s", ip)
+        return resp
+    slog.warning("gate échoué ip=%s", ip)
+    return templates.TemplateResponse(
+        request, "gate.html",
+        {"next_url": _safe_next(next), "error": "Code d'accès incorrect."},
+        status_code=401,
+    )
 
 
 # Enregistré en dernier -> couche la plus externe : les en-têtes de sécurité

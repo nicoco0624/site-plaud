@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     max_notes_per_user: int = 100     # nombre total de notes par utilisateur
     session_days: int = 30
     admin_emails: str = ""            # comptes admin, emails séparés par des virgules
+    # Mot de passe d'accès partagé : première barrière avant même la page de
+    # connexion / d'inscription. Vide = pas de porte (dev).
+    access_password: str = ""
 
     @property
     def admin_emails_list(self) -> list[str]:

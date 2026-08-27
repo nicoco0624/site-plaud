@@ -72,3 +72,15 @@ def unsign(token: str) -> str | None:
     value, _, sig = token.rpartition(".")
     expected = hmac.new(_secret(), value.encode(), hashlib.sha256).hexdigest()
     return value if hmac.compare_digest(sig, expected) else None
+
+
+# ---------- porte d'accès (mot de passe partagé) ----------
+
+def gate_token(access_password: str) -> str:
+    """Jeton du cookie de porte : change si le mot de passe partagé change."""
+    digest = hashlib.sha256(f"gate::{access_password}".encode()).hexdigest()
+    return sign(f"gate:{digest}")
+
+
+def gate_ok(cookie_value: str, access_password: str) -> bool:
+    return hmac.compare_digest(cookie_value or "", gate_token(access_password))
