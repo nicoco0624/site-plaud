@@ -129,6 +129,51 @@ header h1 {
   background: rgba(240, 56, 200, .22);
 }
 
+/* ---------- tabs ---------- */
+.tabs > input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+
+.tab-bar {
+  display: inline-flex;
+  gap: 4px;
+  padding: 5px;
+  margin: 10px 0 2px;
+  border-radius: 999px;
+  background: rgba(168, 85, 247, .12);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  max-width: 100%;
+}
+.tab-bar label {
+  font-family: var(--mono);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 9px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color .15s ease, background .15s ease, box-shadow .2s ease, transform .12s ease;
+  user-select: none;
+}
+.tab-bar label:hover { color: #fff; transform: translateY(-1px); }
+#tab-upload:checked ~ .tab-bar label[for="tab-upload"],
+#tab-notes:checked ~ .tab-bar label[for="tab-notes"] {
+  color: #fff;
+  background: var(--grad);
+  box-shadow: 0 8px 24px -8px rgba(240, 56, 200, .6);
+}
+
+.tab-panel { display: none; }
+#tab-upload:checked ~ .panel-upload,
+#tab-notes:checked ~ .panel-notes { display: block; animation: pop .25s ease; }
+
+@media (max-width: 460px) {
+  .tab-bar label { padding: 8px 12px; font-size: .62rem; }
+}
+
 /* ---------- cards ---------- */
 .card {
   position: relative;

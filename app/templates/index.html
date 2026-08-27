@@ -1,41 +1,53 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="card">
-  <h2>Nouvel enregistrement</h2>
+<div class="tabs">
+  <input type="radio" name="tab" id="tab-upload" checked>
+  <input type="radio" name="tab" id="tab-notes">
 
-  <form id="upload-form"
-        hx-post="/upload"
-        hx-encoding="multipart/form-data"
-        hx-target="#upload-result"
-        hx-swap="innerHTML"
-        hx-on::after-request="if(event.detail.successful) this.reset()">
-    <label id="dropzone" for="file-input">
-      <svg class="dz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-           stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 16V4M7 9l5-5 5 5"/>
-        <path d="M20 16v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3"/>
-      </svg>
-      <strong>Glisse un fichier audio ici</strong>
-      <span>ou clique pour parcourir</span>
-      <em>mp3, wav, m4a — {{ max_upload_mb }} Mo max</em>
-    </label>
-    <input id="file-input" type="file" name="file" accept=".mp3,.wav,.m4a,audio/*" required>
-    <button type="submit">Envoyer</button>
-  </form>
+  <nav class="tab-bar" role="tablist">
+    <label for="tab-upload">Nouvel enregistrement</label>
+    <label for="tab-notes">Mes notes</label>
+  </nav>
 
-  <div id="upload-result" aria-live="polite"></div>
-</section>
+  <section class="tab-panel panel-upload card">
+    <h2>Nouvel enregistrement</h2>
 
-<section class="card">
-  <h2>Notes</h2>
-  <div id="notes"
-       hx-get="/notes"
-       hx-trigger="load, refreshNotes from:body"
-       hx-swap="innerHTML">
-    <p class="muted">Chargement…</p>
-  </div>
-</section>
+    <form id="upload-form"
+          hx-post="/upload"
+          hx-encoding="multipart/form-data"
+          hx-target="#upload-result"
+          hx-swap="innerHTML"
+          hx-on::after-request="if (event.detail.successful) { this.reset();
+            document.getElementById('dropzone').querySelector('strong').textContent = 'Glisse un fichier audio ici';
+            document.getElementById('tab-notes').checked = true; }">
+      <label id="dropzone" for="file-input">
+        <svg class="dz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 16V4M7 9l5-5 5 5"/>
+          <path d="M20 16v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3"/>
+        </svg>
+        <strong>Glisse un fichier audio ici</strong>
+        <span>ou clique pour parcourir</span>
+        <em>mp3, wav, m4a — {{ max_upload_mb }} Mo max</em>
+      </label>
+      <input id="file-input" type="file" name="file" accept=".mp3,.wav,.m4a,audio/*" required>
+      <button type="submit">Envoyer</button>
+    </form>
+
+    <div id="upload-result" aria-live="polite"></div>
+  </section>
+
+  <section class="tab-panel panel-notes card">
+    <h2>Mes notes</h2>
+    <div id="notes"
+         hx-get="/notes"
+         hx-trigger="load, refreshNotes from:body"
+         hx-swap="innerHTML">
+      <p class="muted">Chargement…</p>
+    </div>
+  </section>
+</div>
 
 <script>
   // Retour visuel du drag & drop.
