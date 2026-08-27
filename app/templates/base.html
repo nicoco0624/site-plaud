@@ -9,14 +9,25 @@
 </head>
 <body>
   <header>
-    <h1>🎙️ Site Plaud</h1>
-    <p class="tagline">Upload audio → transcription → résumé → archivage → email</p>
+    <div class="brand">
+      <span class="logo">🎙️</span>
+      <h1>Site Plaud</h1>
+    </div>
+    <p class="tagline">Vos notes vocales, transcrites, résumées et archivées automatiquement.</p>
+    <nav class="pipeline">
+      <span>Upload</span>
+      <span>Transcription</span>
+      <span>Résumé</span>
+      <span>Archivage</span>
+      <span>Email</span>
+    </nav>
   </header>
   <main>
     {% block content %}{% endblock %}
   </main>
   <footer>
-    <span>Étape 5 / 7 — envoi email</span>
+    <span class="dot"></span>
+    <span>Traitement 100&nbsp;% automatique — propulsé par Whisper &amp; un LLM</span>
   </footer>
 </body>
 </html>
