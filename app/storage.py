@@ -13,10 +13,14 @@ from fastapi import UploadFile
 from app.config import BASE_DIR, get_settings
 
 # Formats audio acceptés (extension -> type MIME indicatif).
+# webm / ogg / opus : produits par l'enregistrement micro du navigateur.
 ALLOWED_EXTENSIONS = {
     ".mp3": "audio/mpeg",
     ".wav": "audio/wav",
     ".m4a": "audio/mp4",
+    ".webm": "audio/webm",
+    ".ogg": "audio/ogg",
+    ".opus": "audio/opus",
 }
 
 # Taille des morceaux lus pendant l'écriture sur disque.
