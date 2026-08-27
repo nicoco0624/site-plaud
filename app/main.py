@@ -102,7 +102,12 @@ def healthz() -> dict:
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse(
-        request, "index.html", {"max_upload_mb": settings.max_upload_mb}
+        request,
+        "index.html",
+        {
+            "max_upload_mb": settings.max_upload_mb,
+            "notes_count": len(db.list_notes()),
+        },
     )
 
 

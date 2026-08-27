@@ -1,3 +1,5 @@
+{# met à jour le compteur de l'onglet, où que se fasse ce rendu #}
+<span id="notes-count" class="tab-count" hx-swap-oob="true">{{ notes | length }}</span>
 {% if not notes %}
   <p class="muted">Aucune note pour l'instant.</p>
 {% else %}

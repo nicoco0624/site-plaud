@@ -166,6 +166,26 @@ header h1 {
   box-shadow: 0 8px 24px -8px rgba(240, 56, 200, .6);
 }
 
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  margin-left: 7px;
+  border-radius: 999px;
+  font-size: .6rem;
+  font-weight: 800;
+  line-height: 1;
+  background: rgba(168, 85, 247, .28);
+  color: var(--ink);
+}
+#tab-notes:checked ~ .tab-bar label[for="tab-notes"] .tab-count {
+  background: rgba(255, 255, 255, .28);
+  color: #fff;
+}
+
 .tab-panel { display: none; }
 #tab-upload:checked ~ .panel-upload,
 #tab-notes:checked ~ .panel-notes { display: block; animation: pop .25s ease; }
