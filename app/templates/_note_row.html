@@ -10,8 +10,13 @@
       hx-swap="outerHTML"
     {% endif %}>
   <td>
-    {% if n.title %}<strong>{{ n.title }}</strong><br>{% endif %}
-    <span class="muted">{{ n.original_filename }}</span>
+    {% if n.summary_path %}
+      <a href="/notes/{{ n.id }}" class="note-title-link"><strong>{{ n.title or n.original_filename }}</strong></a><br>
+      <span class="muted">{{ n.original_filename }}</span>
+    {% else %}
+      {% if n.title %}<strong>{{ n.title }}</strong><br>{% endif %}
+      <span class="muted">{{ n.original_filename }}</span>
+    {% endif %}
   </td>
   <td>{{ n.size_bytes | human_size }}</td>
   <td>
@@ -23,25 +28,16 @@
     {% endif %}
   </td>
   <td>
-    {% set out = [] %}
-    {% if n.transcript_path %}<a href="/notes/{{ n.id }}/transcript" target="_blank" rel="noopener">transcription</a>{% set _ = out.append(1) %}{% endif %}
-    {% if n.summary_path %}{% if out %} · {% endif %}<a href="/notes/{{ n.id }}/summary" target="_blank" rel="noopener">résumé</a>{% set _ = out.append(1) %}{% endif %}
-    {% if n.drive_folder_link %}{% if out %} · {% endif %}<a href="{{ n.drive_folder_link }}" target="_blank" rel="noopener">Drive</a>{% set _ = out.append(1) %}{% endif %}
-    {% if n.archive_links %}
-      {% for f in n.archive_links | fromjson %}
-        {% if f.name and (f.provider != "mega") %}{% if out %} · {% endif %}<a href="/notes/{{ n.id }}/dl/{{ f.name }}" target="_blank" rel="noopener">{{ f.name }}</a>{% set _ = out.append(1) %}{% endif %}
-      {% endfor %}
-    {% endif %}
-    {% if not out %}<span class="muted">—</span>{% endif %}
-    {% if n.summary_path and n.status not in PENDING_STATUSES %}
-      <div>
-        <button class="link-btn"
+    {% if n.summary_path %}
+      <a href="/notes/{{ n.id }}">ouvrir</a>
+      {% if n.status not in PENDING_STATUSES %}
+        · <button class="link-btn"
                 hx-post="/notes/{{ n.id }}/email"
                 hx-target="#note-{{ n.id }}"
-                hx-swap="outerHTML">
-          {% if n.emailed_at %}renvoyer l'email{% else %}envoyer l'email{% endif %}
-        </button>
-      </div>
+                hx-swap="outerHTML">{% if n.emailed_at %}renvoyer l'email{% else %}envoyer l'email{% endif %}</button>
+      {% endif %}
+    {% else %}
+      <span class="muted">—</span>
     {% endif %}
   </td>
   <td>{{ n.created_at.replace("T", " ")[:16] }}</td>

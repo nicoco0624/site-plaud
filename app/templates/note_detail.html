@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ n.title or "Note" }} — Site Plaud{% endblock %}
+
+{% block content %}
+<p class="back-link"><a href="/">← Mes notes</a></p>
+
+<section class="card note-detail">
+  <div class="nd-head">
+    <h1 class="nd-title">{{ summary.titre or n.title or n.original_filename }}</h1>
+    <span class="badge badge-{{ n.status }}">{{ STATUS_LABELS.get(n.status, n.status) }}</span>
+  </div>
+  <p class="nd-meta">
+    {{ n.original_filename }} · {{ n.size_bytes | human_size }} ·
+    {{ n.created_at.replace("T", " ")[:16] }}
+    {% if n.emailed_at %} · email envoyé{% endif %}
+  </p>
+  {% if n.error %}<p class="alert error">{{ n.error }}</p>{% endif %}
+
+  {% if summary.resume %}
+    <h2>Résumé</h2>
+    <p class="nd-resume">{{ summary.resume }}</p>
+  {% endif %}
+
+  {% if summary.points_cles %}
+    <h2>Points clés</h2>
+    <ul class="nd-list">
+      {% for p in summary.points_cles %}<li>{{ p }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if summary.actions %}
+    <h2>Actions</h2>
+    <ul class="nd-list nd-actions">
+      {% for a in summary.actions %}<li>{{ a }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if transcript %}
+    <h2>Transcription</h2>
+    <div class="nd-transcript">{{ transcript }}</div>
+  {% endif %}
+
+  {% if files %}
+    <h2>Fichiers</h2>
+    <div class="nd-files">
+      {% for name, url in files %}
+        <a href="{{ url }}" class="nd-chip">↓ {{ name }}</a>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if n.status not in PENDING_STATUSES %}
+    <div class="nd-actions-row">
+      <button class="btn-soft"
+              hx-post="/notes/{{ n.id }}/email?back=1"
+              hx-swap="none">
+        {% if n.emailed_at %}Renvoyer l'email{% else %}Envoyer l'email{% endif %}
+      </button>
+      <button class="btn-soft danger"
+              hx-delete="/notes/{{ n.id }}?back=1"
+              hx-confirm="Supprimer définitivement cette note ?"
+              hx-swap="none">
+        Supprimer
+      </button>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

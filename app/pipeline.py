@@ -225,7 +225,13 @@ def run_email(note_id: str) -> None:
         to = mailer.send_note_email(db.get_note(note_id), recipient=recipient)
     except Exception as exc:  # noqa: BLE001
         # L'email est la dernière étape, optionnelle : on n'échoue pas la note.
-        log.warning("envoi email échoué pour %s : %s", note_id, exc)
+        # Log DÉTAILLÉ (type + message complet + trace) pour le diagnostic ;
+        # message générique côté utilisateur.
+        log.exception(
+            "envoi email KO note=%s destinataire=%s transport=%s : %s: %s",
+            note_id, recipient, get_settings().email_provider,
+            type(exc).__name__, exc,
+        )
         db.update_note(
             note_id, status=resume_status,
             error="L'email récapitulatif n'a pas pu être envoyé.",

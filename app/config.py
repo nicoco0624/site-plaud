@@ -90,12 +90,6 @@ class Settings(BaseSettings):
             return "drive"
         return "none"
 
-    # --- Email (étape 5) ---
-    # Deux transports possibles :
-    #  - Resend (API HTTPS) : marche partout, y compris là où le SMTP sortant
-    #    est bloqué (Render). Sans domaine vérifié : from = onboarding@resend.dev,
-    #    destinataire = l'adresse du compte Resend.
-    #  - SMTP Gmail : pratique en local (mot de passe d'application).
     # Clé de signature des cookies de session. DOIT être définie en prod
     # (stable entre redémarrages, sinon toutes les sessions sautent).
     secret_key: str = _DEFAULT_SECRET_KEY
@@ -108,16 +102,29 @@ class Settings(BaseSettings):
                 "falsifiables. Définis la variable d'environnement SECRET_KEY."
             )
 
+    # --- Email (étape 5) ---
+    # Transports possibles, par ordre de préférence :
+    #  - Brevo (API HTTPS)  : 300 mails/jour gratuits, envoi vers N'IMPORTE QUELLE
+    #    adresse dès qu'un expéditeur unique est vérifié (pas besoin de domaine).
+    #  - Resend (API HTTPS) : sans domaine vérifié, n'envoie QUE vers l'adresse
+    #    du compte Resend -> inadapté pour envoyer au client.
+    #  - SMTP               : bloqué en sortie par Render (tous ports) -> local seulement.
+    mail_from_name: str = "Site Plaud"
+    brevo_api_key: str = ""
+    brevo_sender: str = ""          # adresse expéditeur vérifiée dans Brevo
     resend_api_key: str = ""
+    resend_from: str = "Site Plaud <onboarding@resend.dev>"
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
-    mail_to: str = ""
-    mail_from: str = ""
+    mail_to: str = ""              # repli optionnel si aucun destinataire fourni
+    mail_from: str = ""            # override SMTP/Resend
 
     @property
     def email_provider(self) -> str:
+        if self.brevo_api_key and self.brevo_sender:
+            return "brevo"
         if self.resend_api_key:
             return "resend"
         if self.smtp_user and self.smtp_password:
@@ -126,8 +133,6 @@ class Settings(BaseSettings):
 
     @property
     def email_enabled(self) -> bool:
-        # Le destinataire vient de l'utilisateur connecté ; MAIL_TO n'est qu'un
-        # repli optionnel, donc un transport configuré suffit.
         return self.email_provider != "none"
 
     @property
@@ -135,7 +140,9 @@ class Settings(BaseSettings):
         if self.mail_from:
             return self.mail_from
         if self.email_provider == "resend":
-            return "Site Plaud <onboarding@resend.dev>"
+            return self.resend_from
+        if self.email_provider == "brevo":
+            return self.brevo_sender
         return self.smtp_user
 
     @property

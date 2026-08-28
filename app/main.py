@@ -32,7 +32,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app import auth, b2, db, pipeline, ratelimit, storage
+from app import auth, b2, db, mailer, pipeline, ratelimit, storage
 from app.config import BASE_DIR, get_settings
 
 logging.basicConfig(
@@ -351,33 +351,13 @@ def index(request: Request, user: dict = Depends(require_user)):
     )
 
 
-def _admin_transcript(note: dict) -> str:
-    """Texte de la transcription : fichier local, sinon copie B2, sinon vide."""
-    rel = note.get("transcript_path")
-    if rel:
-        p = _resolve_inside(rel)
-        if p and p.is_file():
-            try:
-                return p.read_text(encoding="utf-8")
-            except OSError:
-                pass
-    for entry in json.loads(note.get("archive_links") or "[]"):
-        if (entry.get("name") == "transcript.txt"
-                and entry.get("provider") == "b2" and entry.get("key")):
-            try:
-                return b2.fetch_text(entry["key"])
-            except Exception:  # noqa: BLE001
-                return ""
-    return ""
-
-
 @app.get("/admin", response_class=HTMLResponse)
 def admin_dashboard(request: Request, user: dict = Depends(require_user)):
     if not user.get("is_admin"):
         raise HTTPException(status_code=404, detail="Not found")
     slog.info("admin dashboard email=%s ip=%s", user["email"], _client_ip(request))
     rows = [
-        {**n, "transcript": _admin_transcript(n)}
+        {**n, "transcript": mailer.load_transcript(n)}
         for n in db.list_all_notes()
     ]
     return templates.TemplateResponse(
@@ -400,6 +380,24 @@ def note_row(request: Request, note_id: str, user: dict = Depends(require_user))
     if not note or note.get("user_id") != user["id"]:
         return HTMLResponse("")  # note absente / pas à cet utilisateur : ligne vide
     return templates.TemplateResponse(request, "_note_row.html", {"n": note})
+
+
+@app.get("/notes/{note_id}", response_class=HTMLResponse)
+def note_detail(request: Request, note_id: str, user: dict = Depends(require_user)):
+    """Page détaillée d'une note, au style du site (résumé + transcription)."""
+    note = _owned_note_or_404(note_id, user, request)
+    summary = mailer.load_summary(note)
+    return templates.TemplateResponse(
+        request,
+        "note_detail.html",
+        {
+            "user": user,
+            "n": note,
+            "summary": summary,
+            "transcript": mailer.load_transcript(note),
+            "files": mailer.download_links(note),
+        },
+    )
 
 
 def _resolve_inside(rel: str) -> Path | None:
@@ -465,6 +463,7 @@ def note_send_email(
     request: Request,
     background: BackgroundTasks,
     note_id: str,
+    back: int = 0,
     user: dict = Depends(require_user),
 ):
     """(Re)déclenche l'envoi de l'email récapitulatif pour une note."""
@@ -476,13 +475,18 @@ def note_send_email(
     slog.info("email manuel note=%s user=%s", note_id, user["id"])
     background.add_task(pipeline.run_email, note_id)
     db.update_note(note_id, status=db.STATUS_SENDING, error=None)
+    if back:  # appelé depuis la page détail : on la recharge
+        return Response(status_code=200, headers={"HX-Redirect": f"/notes/{note_id}"})
     return templates.TemplateResponse(
         request, "_note_row.html", {"n": db.get_note(note_id)}
     )
 
 
 @app.delete("/notes/{note_id}")
-def note_delete(request: Request, note_id: str, user: dict = Depends(require_user)):
+def note_delete(
+    request: Request, note_id: str, back: int = 0,
+    user: dict = Depends(require_user),
+):
     """Supprime une note : fichiers archivés (B2), fichiers locaux, ligne en base."""
     note = _owned_note_or_404(note_id, user, request)
 
@@ -499,7 +503,8 @@ def note_delete(request: Request, note_id: str, user: dict = Depends(require_use
 
     db.delete_note(note_id)
     slog.info("note supprimée note=%s user=%s", note_id, user["id"])
-    return Response(status_code=200, headers={"HX-Trigger": "refreshNotes"})
+    headers = {"HX-Redirect": "/"} if back else {"HX-Trigger": "refreshNotes"}
+    return Response(status_code=200, headers=headers)
 
 
 @app.post("/upload", response_class=HTMLResponse)
