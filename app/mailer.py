@@ -198,12 +198,12 @@ def _render(note: dict) -> tuple[str, str, str]:
 
 
 def _attachments(note: dict) -> list[tuple[str, bytes]]:
+    """Pièces jointes : le transcript en .txt. Le résumé est déjà dans le corps ;
+    on ne joint pas summary.md (extension refusée par Brevo)."""
     out = []
-    for key in ("transcript_path", "summary_path"):
-        rel = note.get(key)
-        if rel and (BASE_DIR / rel).exists():
-            p = BASE_DIR / rel
-            out.append((p.name, p.read_bytes()))
+    rel = note.get("transcript_path")
+    if rel and (BASE_DIR / rel).exists():
+        out.append(("transcription.txt", (BASE_DIR / rel).read_bytes()))
     return out
 
 
