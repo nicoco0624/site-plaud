@@ -590,6 +590,48 @@ footer .dot {
   text-transform: uppercase;
   color: var(--violet);
 }
+.nd-rename { margin: 4px 0 10px; }
+.nd-rename > summary {
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  list-style: none;
+}
+.nd-rename > summary:hover { color: var(--fuchsia); }
+.nd-rename-form { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.nd-rename-form input {
+  flex: 1;
+  min-width: 200px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: rgba(20, 10, 36, .5);
+  color: var(--ink);
+  font: inherit;
+  outline: none;
+}
+.nd-rename-form input:focus { border-color: var(--fuchsia); }
+.nd-rename-form button {
+  font-family: inherit;
+  font-weight: 650;
+  color: var(--accent-ink, #0a0f1e);
+  background: var(--grad);
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 18px;
+  cursor: pointer;
+  color: #fff;
+}
+
+.nd-audio {
+  width: 100%;
+  margin: 6px 0 4px;
+  border-radius: 12px;
+}
+
 .nd-resume { margin: 0; font-size: 1.02rem; line-height: 1.7; color: var(--ink); }
 .nd-list { margin: 0; padding-left: 20px; }
 .nd-list li { margin: 7px 0; line-height: 1.55; }

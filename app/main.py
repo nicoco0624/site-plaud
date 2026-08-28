@@ -92,6 +92,9 @@ _CSP = (
     "img-src 'self' data:; "
     "font-src 'self'; "
     "connect-src 'self'; "
+    # lecteur audio de la page détail : la piste est servie via /notes/{id}/dl/…
+    # qui redirige (302) vers une URL B2 signée.
+    "media-src 'self' https://*.backblazeb2.com; "
     "form-action 'self'; "
     "base-uri 'self'; "
     "frame-ancestors 'none'; "
@@ -142,7 +145,8 @@ templates.env.globals["STATUS_LABELS"] = STATUS_LABELS
 #  Comptes : email + mot de passe, session par cookie signé.
 # --------------------------------------------------------------------------- #
 _SESSION_COOKIE = "plaud_session"
-_EXEMPT_EXACT = {"/login", "/register", "/logout", "/healthz", "/favicon.ico"}
+_EXEMPT_EXACT = {"/login", "/register", "/logout", "/forgot", "/reset",
+                 "/healthz", "/favicon.ico"}
 _EXEMPT_PREFIX = ("/static/",)
 _SENSITIVE_USER_FIELDS = {"password_hash"}
 
@@ -258,6 +262,107 @@ def login_submit(
         {"next_url": _safe_next(next), "error": "Email ou mot de passe incorrect."},
         status_code=401,
     )
+
+
+# --------------------------------------------------------------------------- #
+#  Mot de passe oublié
+# --------------------------------------------------------------------------- #
+_FORGOT_DONE = ("Si un compte existe pour cette adresse, un email avec un lien "
+                "de réinitialisation vient d'être envoyé.")
+
+
+def _base_url(request: Request) -> str:
+    return (settings.public_base_url or str(request.base_url)).rstrip("/")
+
+
+@app.get("/forgot", response_class=HTMLResponse)
+def forgot_form(request: Request):
+    if _current_user(request):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(request, "forgot.html", {"error": None, "done": None})
+
+
+@app.post("/forgot", response_class=HTMLResponse)
+def forgot_submit(request: Request, email: str = Form("")):
+    ip = _client_ip(request)
+    email = email.strip().lower()
+    if not (ratelimit.allow(f"forgot-ip:{ip}", 5, 1800)
+            and ratelimit.allow(f"forgot-acct:{email}", 3, 1800)):
+        return templates.TemplateResponse(
+            request, "forgot.html",
+            {"error": "Trop de demandes. Réessaie dans quelques minutes.", "done": None},
+            status_code=429,
+        )
+    user = db.get_user_by_email(email)
+    if user:
+        link = f"{_base_url(request)}/reset?token={auth.make_reset_token(user)}"
+        try:
+            mailer.send_reset_email(email, link)
+            slog.info("reset demandé email=%s ip=%s", email, ip)
+        except Exception:  # noqa: BLE001
+            slog.exception("envoi email reset KO email=%s", email)
+    else:
+        slog.info("reset demandé (compte inconnu) email=%s ip=%s", email, ip)
+    return templates.TemplateResponse(
+        request, "forgot.html", {"error": None, "done": _FORGOT_DONE}
+    )
+
+
+def _valid_reset_user(token: str) -> dict | None:
+    """Utilisateur si le jeton est signé, non expiré ET encore d'actualité
+    (le mot de passe n'a pas changé depuis l'émission)."""
+    parsed = auth.read_reset_token(token)
+    if not parsed:
+        return None
+    user = db.get_user(parsed[0])
+    if not user or auth.hash_fingerprint(user["password_hash"]) != parsed[1]:
+        return None
+    return user
+
+
+_RESET_INVALID = {"token": "", "invalid": True,
+                  "error": "Lien invalide ou expiré. Refais une demande."}
+
+
+@app.get("/reset", response_class=HTMLResponse)
+def reset_form(request: Request, token: str = ""):
+    if not _valid_reset_user(token):
+        return templates.TemplateResponse(request, "reset.html", _RESET_INVALID,
+                                          status_code=400)
+    return templates.TemplateResponse(
+        request, "reset.html", {"token": token, "error": None, "invalid": False}
+    )
+
+
+@app.post("/reset", response_class=HTMLResponse)
+def reset_submit(
+    request: Request,
+    token: str = Form(""),
+    password: str = Form(""),
+    password2: str = Form(""),
+):
+    user = _valid_reset_user(token)
+    if not user:
+        return templates.TemplateResponse(request, "reset.html", _RESET_INVALID,
+                                          status_code=400)
+    if not (auth.MIN_PASSWORD_LEN <= len(password) <= auth.MAX_PASSWORD_LEN):
+        err = (f"Le mot de passe doit faire entre {auth.MIN_PASSWORD_LEN} et "
+               f"{auth.MAX_PASSWORD_LEN} caractères.")
+    elif password != password2:
+        err = "Les deux mots de passe ne correspondent pas."
+    else:
+        err = None
+    if err:
+        return templates.TemplateResponse(
+            request, "reset.html", {"token": token, "error": err, "invalid": False},
+            status_code=400,
+        )
+
+    db.set_user_password(user["id"], auth.hash_password(password))
+    slog.info("mot de passe réinitialisé user=%s ip=%s", user["id"], _client_ip(request))
+    resp = RedirectResponse("/", status_code=303)
+    _set_session(resp, request, user["id"])  # connecte directement
+    return resp
 
 
 @app.get("/register", response_class=HTMLResponse)
@@ -387,6 +492,13 @@ def note_detail(request: Request, note_id: str, user: dict = Depends(require_use
     """Page détaillée d'une note, au style du site (résumé + transcription)."""
     note = _owned_note_or_404(note_id, user, request)
     summary = mailer.load_summary(note)
+    # URL de lecture de l'audio d'origine, si archivé.
+    audio_ext = Path(note["stored_path"]).suffix
+    audio_name = f"original{audio_ext}"
+    has_audio = any(
+        e.get("name") == audio_name
+        for e in json.loads(note["archive_links"] or "[]")
+    )
     return templates.TemplateResponse(
         request,
         "note_detail.html",
@@ -396,6 +508,8 @@ def note_detail(request: Request, note_id: str, user: dict = Depends(require_use
             "summary": summary,
             "transcript": mailer.load_transcript(note),
             "files": mailer.download_links(note),
+            "audio_url": f"/notes/{note_id}/dl/{audio_name}" if has_audio else None,
+            "audio_mime": storage.ALLOWED_EXTENSIONS.get(audio_ext, "audio/mpeg"),
         },
     )
 
@@ -480,6 +594,21 @@ def note_send_email(
     return templates.TemplateResponse(
         request, "_note_row.html", {"n": db.get_note(note_id)}
     )
+
+
+@app.post("/notes/{note_id}/rename")
+def note_rename(
+    request: Request, note_id: str, title: str = Form(""),
+    user: dict = Depends(require_user),
+):
+    """Renomme le titre d'une note (édition manuelle)."""
+    _owned_note_or_404(note_id, user, request)
+    clean = " ".join(title.split())[:120].strip()
+    if not clean:
+        raise HTTPException(status_code=400, detail="Titre vide")
+    db.update_note(note_id, title=clean)
+    slog.info("note renommée note=%s user=%s", note_id, user["id"])
+    return RedirectResponse(f"/notes/{note_id}", status_code=303)
 
 
 @app.delete("/notes/{note_id}")

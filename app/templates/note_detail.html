@@ -6,7 +6,7 @@
 
 <section class="card note-detail">
   <div class="nd-head">
-    <h1 class="nd-title">{{ summary.titre or n.title or n.original_filename }}</h1>
+    <h1 class="nd-title">{{ n.title or summary.titre or n.original_filename }}</h1>
     <span class="badge badge-{{ n.status }}">{{ STATUS_LABELS.get(n.status, n.status) }}</span>
   </div>
   <p class="nd-meta">
@@ -15,6 +15,21 @@
     {% if n.emailed_at %} · email envoyé{% endif %}
   </p>
   {% if n.error %}<p class="alert error">{{ n.error }}</p>{% endif %}
+
+  {% if n.status not in PENDING_STATUSES %}
+    <details class="nd-rename">
+      <summary>renommer</summary>
+      <form method="post" action="/notes/{{ n.id }}/rename" class="nd-rename-form">
+        <input type="text" name="title" maxlength="120"
+               value="{{ n.title or '' }}" placeholder="Nouveau titre" required>
+        <button type="submit">OK</button>
+      </form>
+    </details>
+  {% endif %}
+
+  {% if audio_url %}
+    <audio class="nd-audio" controls preload="none" src="{{ audio_url }}"></audio>
+  {% endif %}
 
   {% if summary.resume %}
     <h2>Résumé</h2>

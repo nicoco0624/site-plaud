@@ -209,6 +209,10 @@ def get_user_by_email(email: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def set_user_password(user_id: str, password_hash: str) -> None:
+    _q("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+
+
 # ----- notes -----
 
 def create_note(

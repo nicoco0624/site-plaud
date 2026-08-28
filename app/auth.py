@@ -8,8 +8,11 @@ import hashlib
 import hmac
 import os
 import re
+import time
 
 from app.config import get_settings
+
+PW_RESET_TTL = 3600  # secondes de validité d'un lien de réinitialisation
 
 _PBKDF2_ROUNDS = 300_000
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -72,3 +75,32 @@ def unsign(token: str) -> str | None:
     value, _, sig = token.rpartition(".")
     expected = hmac.new(_secret(), value.encode(), hashlib.sha256).hexdigest()
     return value if hmac.compare_digest(sig, expected) else None
+
+
+# ---------- réinitialisation de mot de passe ----------
+
+def hash_fingerprint(password_hash: str) -> str:
+    """Fragment qui change à chaque changement de mot de passe (fin du hash)."""
+    return (password_hash or "")[-16:]
+
+
+def make_reset_token(user: dict) -> str:
+    """Jeton à usage unique : lié à l'utilisateur, daté, invalidé dès que le
+    mot de passe change (on y incorpore un fragment du hash courant)."""
+    return sign(
+        f"pwr:{user['id']}:{int(time.time())}:{hash_fingerprint(user['password_hash'])}"
+    )
+
+
+def read_reset_token(token: str) -> tuple[str, str] | None:
+    """Renvoie (user_id, hash_prefix) si le jeton est valide et non expiré."""
+    raw = unsign(token)
+    if not raw or not raw.startswith("pwr:"):
+        return None
+    try:
+        _, uid, ts, hp = raw.split(":")
+        if time.time() - int(ts) > PW_RESET_TTL:
+            return None
+    except ValueError:
+        return None
+    return uid, hp

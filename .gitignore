@@ -17,3 +17,6 @@ data/
 
 # Divers
 .DS_Store
+
+# workflow non poussé (token GitHub sans scope "workflow") — à ajouter via l'UI GitHub
+.github/

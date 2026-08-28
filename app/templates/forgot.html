@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Mot de passe oublié — Site Plaud{% endblock %}
+
+{% block content %}
+<section class="card auth-card">
+  <h2>Mot de passe oublié</h2>
+  {% if done %}
+    <p class="alert ok">{{ done }}</p>
+    <p class="auth-switch"><a href="/login">Retour à la connexion</a></p>
+  {% else %}
+    <p class="muted login-hint">Entre ton adresse : on t'envoie un lien pour choisir un nouveau mot de passe.</p>
+    {% if error %}<p class="alert error">{{ error }}</p>{% endif %}
+    <form method="post" action="/forgot" class="auth-form">
+      <input type="email" name="email" placeholder="Adresse email"
+             autocomplete="email" autofocus required>
+      <button type="submit">Envoyer le lien</button>
+    </form>
+    <p class="auth-switch"><a href="/login">Retour à la connexion</a></p>
+  {% endif %}
+</section>
+{% endblock %}

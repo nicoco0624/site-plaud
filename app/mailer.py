@@ -277,17 +277,59 @@ def _send_smtp(st, to, subject, text, html, atts) -> str:
 _SENDERS = {"brevo": _send_brevo, "resend": _send_resend, "smtp": _send_smtp}
 
 
-def send_note_email(note: dict, recipient: str | None = None) -> str:
-    """Envoie le récap de la note. Renvoie l'adresse destinataire. Lève
-    EmailNotConfigured / EmailSendError (message détaillé pour les logs)."""
+def _dispatch(to: str, subject: str, text: str, html: str, atts=None) -> str:
     st = get_settings()
-    to = (recipient or st.mail_to or "").strip()
+    to = (to or "").strip()
     provider = st.email_provider
     if provider == "none":
         raise EmailNotConfigured("aucun transport email configuré "
                                  "(BREVO_API_KEY+BREVO_SENDER, RESEND_API_KEY, ou SMTP_*)")
     if not to:
-        raise EmailNotConfigured("aucun destinataire (ni recipient ni MAIL_TO)")
+        raise EmailNotConfigured("aucun destinataire")
+    return _SENDERS[provider](st, to, subject, text, html, atts or [])
 
+
+def send_note_email(note: dict, recipient: str | None = None) -> str:
+    """Envoie le récap d'une note. Lève EmailNotConfigured / EmailSendError."""
+    to = (recipient or get_settings().mail_to or "")
     subject, text, html = _render(note)
-    return _SENDERS[provider](st, to, subject, text, html, _attachments(note))
+    return _dispatch(to, subject, text, html, _attachments(note))
+
+
+def _simple_shell(title: str, inner: str) -> str:
+    F = "-apple-system,Segoe UI,Roboto,Arial,sans-serif"
+    return (
+        '<!doctype html><html lang="fr"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<meta name="color-scheme" content="light">'
+        f"<title>{escape(title)}</title></head>"
+        '<body style="margin:0;padding:0;background:#f1eef9;">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1eef9;">'
+        '<tr><td align="center" style="padding:28px 14px;">'
+        '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:520px;">'
+        f'<tr><td style="background:#7c3aed;background-image:{_GRAD};border-radius:20px 20px 0 0;padding:30px;">'
+        f'<div style="font:800 12px/1 {F};letter-spacing:3px;color:rgba(255,255,255,.85);">&#127908; SITE PLAUD</div>'
+        f'<h1 style="margin:10px 0 0;font:800 22px/1.3 {F};color:#fff;">{escape(title)}</h1></td></tr>'
+        f'<tr><td style="background:#fff;border-radius:0 0 20px 20px;padding:28px 30px;font:400 15px/1.6 {F};color:#2b2440;">'
+        f'{inner}</td></tr></table></td></tr></table></body></html>'
+    )
+
+
+def send_reset_email(to: str, link: str) -> str:
+    """Envoie le lien de réinitialisation de mot de passe."""
+    btn = (
+        f'<a href="{escape(link)}" style="display:inline-block;margin:18px 0;'
+        f'padding:13px 26px;border-radius:12px;background:#6d5efc;color:#fff;'
+        f'font-weight:700;text-decoration:none;">Choisir un nouveau mot de passe</a>'
+    )
+    inner = (
+        "<p>Tu as demandé à réinitialiser ton mot de passe. Ce lien est valable "
+        "1 heure&nbsp;:</p>"
+        f"{btn}"
+        f'<p style="font-size:13px;color:#8a80a8;word-break:break-all;">{escape(link)}</p>'
+        "<p style=\"font-size:13px;color:#8a80a8;\">Si tu n'es pas à l'origine de "
+        "cette demande, ignore cet email.</p>"
+    )
+    text = f"Réinitialise ton mot de passe (valable 1h) : {link}"
+    return _dispatch(to, "Réinitialisation de ton mot de passe — Site Plaud",
+                     text, _simple_shell("Mot de passe oublié", inner))
