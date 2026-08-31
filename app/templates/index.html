@@ -25,6 +25,14 @@
   <section class="tab-panel panel-upload card">
     <h2>Nouvel enregistrement</h2>
 
+    {% if not audio_allowed %}
+    <div class="paywall">
+      <strong>Essai gratuit déjà utilisé</strong>
+      <p>Abonne-toi ({{ price }}) pour un accès illimité au Résumé Audio et au Résumé Vidéo.
+      Tes notes déjà générées restent consultables dans « Mes notes ».</p>
+    </div>
+    {% else %}
+
     <form id="upload-form"
           hx-post="/upload"
           hx-encoding="multipart/form-data"
@@ -55,6 +63,7 @@
       <button type="button" id="rec-cancel" class="link-btn" hidden>annuler</button>
     </div>
     <p id="rec-msg" class="row-hint" hidden></p>
+    {% endif %}
 
     <div id="upload-result" aria-live="polite"></div>
   </section>

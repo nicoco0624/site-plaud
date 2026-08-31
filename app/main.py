@@ -165,6 +165,31 @@ def _current_user(request: Request) -> dict | None:
     return _public_user(db.get_user(uid)) if uid else None
 
 
+# --------------------------------------------------------------------------- #
+#  Essais gratuits / abonnement
+# --------------------------------------------------------------------------- #
+_PAYWALL_MSG = ("Essai gratuit déjà utilisé. Abonne-toi ({price}) pour un "
+                "accès illimité au Résumé Audio et au Résumé Vidéo.")
+
+
+def _feature_left(user: dict, feature: str) -> int | None:
+    """Usages gratuits restants pour 'audio' / 'video'. None = illimité."""
+    if user.get("is_admin") or user.get("subscribed"):
+        return None
+    free = settings.free_audio if feature == "audio" else settings.free_video
+    used = int(user.get(f"{feature}_used") or 0)
+    return max(0, free - used)
+
+
+def _feature_allowed(user: dict, feature: str) -> bool:
+    left = _feature_left(user, feature)
+    return left is None or left > 0
+
+
+def _paywall_msg() -> str:
+    return _PAYWALL_MSG.format(price=settings.subscription_label)
+
+
 def _set_session(resp: Response, request: Request, user_id: str) -> None:
     # Cookie de session (pas de max_age / expires) : le navigateur l'efface à sa
     # fermeture -> il faut se reconnecter (email + mot de passe) à chaque
@@ -446,7 +471,15 @@ def home(request: Request, user: dict = Depends(require_user)):
     """Page d'accueil : choix entre Résumé Audio et Résumé Vidéo.
     Les admins voient la même page (+ un lien vers le tableau admin) et ont
     accès illimité aux deux fonctionnalités."""
-    return templates.TemplateResponse(request, "home.html", {"user": user})
+    return templates.TemplateResponse(
+        request, "home.html",
+        {
+            "user": user,
+            "audio_left": _feature_left(user, "audio"),
+            "video_left": _feature_left(user, "video"),
+            "price": settings.subscription_label,
+        },
+    )
 
 
 @app.get("/audio", response_class=HTMLResponse)
@@ -459,6 +492,8 @@ def audio_app(request: Request, user: dict = Depends(require_user)):
             "user": user,
             "max_upload_mb": settings.max_upload_mb,
             "notes_count": db.count_notes(user["id"]),
+            "audio_allowed": _feature_allowed(user, "audio"),
+            "price": settings.subscription_label,
         },
     )
 
@@ -468,7 +503,12 @@ def video_page(request: Request, user: dict = Depends(require_user)):
     """Résumé Vidéo : coller un lien YouTube -> fiche de révision."""
     return templates.TemplateResponse(
         request, "video.html",
-        {"user": user, "max_minutes": settings.video_max_minutes},
+        {
+            "user": user,
+            "max_minutes": settings.video_max_minutes,
+            "video_allowed": _feature_allowed(user, "video"),
+            "price": settings.subscription_label,
+        },
     )
 
 
@@ -483,6 +523,9 @@ def video_generate(
         return templates.TemplateResponse(
             request, "_video_result.html", {"error": msg}
         )
+
+    if not _feature_allowed(user, "video"):
+        return _err(_paywall_msg())
 
     if not user.get("is_admin") and not ratelimit.allow(
         f"video:{user['id']}", settings.video_per_hour, 3600
@@ -517,6 +560,7 @@ def video_generate(
         slog.exception("video IA KO url=%s user=%s", url, user["id"])
         return _err("La génération de la fiche a échoué. Réessaie dans un moment.")
 
+    db.bump_usage(user["id"], "video")
     slog.info("video fiche générée url=%s user=%s chars=%d",
               url, user["id"], len(transcript))
 
@@ -553,8 +597,29 @@ def admin_dashboard(request: Request, user: dict = Depends(require_user)):
     ]
     return templates.TemplateResponse(
         request, "admin.html",
-        {"user": user, "rows": rows, "stats": db.global_stats()},
+        {
+            "user": user,
+            "rows": rows,
+            "stats": db.global_stats(),
+            "users": db.list_users(),
+            "free_audio": settings.free_audio,
+            "free_video": settings.free_video,
+        },
     )
+
+
+@app.post("/admin/users/{uid}/sub")
+def admin_toggle_sub(request: Request, uid: str, user: dict = Depends(require_user)):
+    """Active / coupe l'abonnement (accès illimité) d'un compte."""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=404, detail="Not found")
+    target = db.get_user(uid)
+    if not target:
+        raise HTTPException(status_code=404, detail="Not found")
+    new_val = not bool(target.get("subscribed"))
+    db.set_subscribed(uid, new_val)
+    slog.info("admin %s -> subscribed=%s pour %s", user["email"], new_val, target["email"])
+    return RedirectResponse("/admin", status_code=303)
 
 
 @app.get("/notes", response_class=HTMLResponse)
@@ -731,6 +796,14 @@ async def upload(
 ):
     ip = _client_ip(request)
 
+    # Essai gratuit épuisé -> abonnement requis.
+    if not _feature_allowed(user, "audio"):
+        return templates.TemplateResponse(
+            request, "_upload_result.html",
+            {"error": _paywall_msg()},
+            status_code=402,
+        )
+
     # Quotas anti-abus (Groq / stockage).
     if not ratelimit.allow(f"upload:{user['id']}", settings.max_uploads_per_day, 86400):
         return templates.TemplateResponse(
@@ -777,6 +850,7 @@ async def upload(
         content_type=file.content_type,
         size_bytes=size,
     )
+    db.bump_usage(user["id"], "audio")
     slog.info("upload note=%s user=%s taille=%d ip=%s", note_id, user["id"], size, ip)
     background.add_task(pipeline.run_transcription, note_id)
 

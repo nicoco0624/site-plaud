@@ -11,11 +11,6 @@
   </p>
 
   <div class="home-cards">
-    {% set trials = {
-      "audio": {"free_left": 1},
-      "video": {"free_left": 0}
-    } %}
-
     <a href="/audio" class="home-card">
       <span class="home-card-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
@@ -26,10 +21,12 @@
       </span>
       <h2>Résumé Audio</h2>
       <p>Upload un enregistrement audio, obtiens une transcription et un résumé.</p>
-      {% if trials.audio.free_left > 0 %}
-        <span class="trial-badge ok">✨ {{ trials.audio.free_left }} essai gratuit disponible</span>
+      {% if audio_left is none %}
+        <span class="trial-badge ok">✨ Accès illimité</span>
+      {% elif audio_left > 0 %}
+        <span class="trial-badge ok">✨ {{ audio_left }} essai gratuit disponible</span>
       {% else %}
-        <span class="trial-badge used">Essai utilisé — abonne-toi</span>
+        <span class="trial-badge used">Essai utilisé — abonne-toi ({{ price }})</span>
       {% endif %}
     </a>
 
@@ -43,10 +40,12 @@
       </span>
       <h2>Résumé Vidéo</h2>
       <p>Colle un lien YouTube, obtiens une fiche de révision structurée.</p>
-      {% if trials.video.free_left > 0 %}
-        <span class="trial-badge ok">✨ {{ trials.video.free_left }} essai gratuit disponible</span>
+      {% if video_left is none %}
+        <span class="trial-badge ok">✨ Accès illimité</span>
+      {% elif video_left > 0 %}
+        <span class="trial-badge ok">✨ {{ video_left }} essai gratuit disponible</span>
       {% else %}
-        <span class="trial-badge used">Essai utilisé — abonne-toi</span>
+        <span class="trial-badge used">Essai utilisé — abonne-toi ({{ price }})</span>
       {% endif %}
     </a>
   </div>
@@ -56,7 +55,7 @@
   {% else %}
     <p class="home-pricing">
       <span class="home-pricing-tag">Abonnement</span>
-      <strong>10&nbsp;€/mois</strong> — accès illimité aux deux fonctionnalités.
+      <strong>{{ price }}</strong> — accès illimité aux deux fonctionnalités.
     </p>
   {% endif %}
 </section>

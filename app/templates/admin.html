@@ -17,6 +17,46 @@
 </section>
 
 <section class="card">
+  <h2>Comptes &amp; abonnements</h2>
+  {% if not users %}
+    <p class="muted">Aucun compte.</p>
+  {% else %}
+  <div class="admin-table-wrap">
+    <table class="notes admin-table">
+      <thead>
+        <tr>
+          <th>Email</th><th>Audio</th><th>Vidéo</th><th>Accès</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.email }}</td>
+          <td>{{ u.audio_used or 0 }} / {{ free_audio }}</td>
+          <td>{{ u.video_used or 0 }} / {{ free_video }}</td>
+          <td>
+            {% if u.subscribed %}
+              <span class="badge badge-done">Illimité</span>
+            {% else %}
+              <span class="muted">Essai gratuit</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="/admin/users/{{ u.id }}/sub">
+              <button type="submit" class="btn-soft">
+                {% if u.subscribed %}Repasser en essai{% else %}Activer l'abonnement{% endif %}
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card">
   <h2>Toutes les notes</h2>
   {% if not rows %}
     <p class="muted">Aucune note pour l'instant.</p>

@@ -9,6 +9,12 @@
 
 <section class="card">
   <h2>Résumé Vidéo</h2>
+  {% if not video_allowed %}
+  <div class="paywall">
+    <strong>Essai gratuit déjà utilisé</strong>
+    <p>Abonne-toi ({{ price }}) pour un accès illimité au Résumé Audio et au Résumé Vidéo.</p>
+  </div>
+  {% else %}
   <form id="video-form" class="video-form"
         hx-post="/video" hx-target="#video-result" hx-swap="innerHTML"
         hx-disabled-elt="#video-form button" hx-indicator="#video-loading">
@@ -25,6 +31,7 @@
     Récupération de la transcription puis génération de la fiche — ça peut
     prendre jusqu'à une minute sur une vidéo longue.
   </div>
+  {% endif %}
 </section>
 
 <div id="video-result"></div>

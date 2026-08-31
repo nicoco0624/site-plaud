@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     max_notes_per_user: int = 100     # nombre total de notes par utilisateur
     admin_emails: str = ""            # comptes admin, emails séparés par des virgules
 
+    # --- Essais gratuits / abonnement ---
+    free_audio: int = 1              # résumés audio gratuits par compte
+    free_video: int = 1             # fiches vidéo gratuites par compte
+    subscription_label: str = "10 €/mois"
+
     # --- Résumé Vidéo (YouTube) ---
     video_max_minutes: int = 90              # au-delà : « vidéo trop longue »
     video_transcript_max_chars: int = 35000  # tronqué avant envoi à l'IA

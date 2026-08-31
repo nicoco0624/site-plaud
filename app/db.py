@@ -75,6 +75,12 @@ _MIGRATIONS = [
     ("user_id", "TEXT"),
 ]
 
+_USER_MIGRATIONS = [
+    ("audio_used", "INTEGER NOT NULL DEFAULT 0"),
+    ("video_used", "INTEGER NOT NULL DEFAULT 0"),
+    ("subscribed", "INTEGER NOT NULL DEFAULT 0"),
+]
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -183,10 +189,14 @@ def _q(sql: str, params: tuple = ()) -> list[dict]:
 def init_db() -> None:
     _q(_CREATE_TABLE)
     _q(_CREATE_USERS)
-    existing = {r["name"] for r in _q("PRAGMA table_info(notes)")}
+    cols = {r["name"] for r in _q("PRAGMA table_info(notes)")}
     for name, ddl in _MIGRATIONS:
-        if name not in existing:
+        if name not in cols:
             _q(f"ALTER TABLE notes ADD COLUMN {name} {ddl}")
+    ucols = {r["name"] for r in _q("PRAGMA table_info(users)")}
+    for name, ddl in _USER_MIGRATIONS:
+        if name not in ucols:
+            _q(f"ALTER TABLE users ADD COLUMN {name} {ddl}")
 
 
 # ----- utilisateurs -----
@@ -211,6 +221,23 @@ def get_user_by_email(email: str) -> dict | None:
 
 def set_user_password(user_id: str, password_hash: str) -> None:
     _q("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+
+
+def bump_usage(user_id: str, feature: str) -> None:
+    """Incrémente le compteur d'usage d'une fonctionnalité ('audio' ou 'video')."""
+    col = "audio_used" if feature == "audio" else "video_used"
+    _q(f"UPDATE users SET {col} = COALESCE({col}, 0) + 1 WHERE id = ?", (user_id,))
+
+
+def set_subscribed(user_id: str, value: bool) -> None:
+    _q("UPDATE users SET subscribed = ? WHERE id = ?", (1 if value else 0, user_id))
+
+
+def list_users() -> list[dict]:
+    return _q(
+        "SELECT id, email, created_at, audio_used, video_used, subscribed "
+        "FROM users ORDER BY created_at"
+    )
 
 
 # ----- notes -----

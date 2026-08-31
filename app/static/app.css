@@ -785,6 +785,26 @@ footer .dot {
   border-color: rgba(251, 191, 36, .4);
 }
 
+.paywall {
+  border: 1px solid rgba(251, 191, 36, .4);
+  background: rgba(251, 191, 36, .1);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin: 4px 0 8px;
+}
+.paywall strong {
+  display: block;
+  color: var(--warn);
+  margin-bottom: 6px;
+  font-size: .98rem;
+}
+.paywall p {
+  margin: 0;
+  color: var(--muted);
+  font-size: .88rem;
+  line-height: 1.5;
+}
+
 .home-pricing {
   margin: 34px auto 0;
   color: var(--faint);
