@@ -443,9 +443,9 @@ def healthz() -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, user: dict = Depends(require_user)):
-    """Page d'accueil : choix entre Résumé Audio et Résumé Vidéo."""
-    if user.get("is_admin"):
-        return RedirectResponse("/admin", status_code=303)
+    """Page d'accueil : choix entre Résumé Audio et Résumé Vidéo.
+    Les admins voient la même page (+ un lien vers le tableau admin) et ont
+    accès illimité aux deux fonctionnalités."""
     return templates.TemplateResponse(request, "home.html", {"user": user})
 
 

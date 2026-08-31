@@ -791,6 +791,8 @@ footer .dot {
   font-size: .88rem;
 }
 .home-pricing strong { color: var(--muted); }
+.home-admin { margin: 34px auto 0; font-size: .85rem; color: var(--faint); }
+.home-admin a { color: var(--cyan); }
 .home-pricing-tag {
   font-family: var(--mono);
   font-size: .64rem;

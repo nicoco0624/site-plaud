@@ -51,9 +51,13 @@
     </a>
   </div>
 
-  <p class="home-pricing">
-    <span class="home-pricing-tag">Abonnement</span>
-    <strong>10&nbsp;€/mois</strong> — accès illimité aux deux fonctionnalités.
-  </p>
+  {% if user and user.is_admin %}
+    <p class="home-admin"><a href="/admin">→ Tableau admin</a> · accès illimité aux deux fonctionnalités</p>
+  {% else %}
+    <p class="home-pricing">
+      <span class="home-pricing-tag">Abonnement</span>
+      <strong>10&nbsp;€/mois</strong> — accès illimité aux deux fonctionnalités.
+    </p>
+  {% endif %}
 </section>
 {% endblock %}
