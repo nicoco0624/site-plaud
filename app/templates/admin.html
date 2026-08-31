@@ -25,29 +25,66 @@
     <table class="notes admin-table">
       <thead>
         <tr>
-          <th>Email</th><th>Audio</th><th>Vidéo</th><th>Accès</th><th></th>
+          <th>Email</th><th>Audio</th><th>Vidéo</th><th>Accès</th>
+          <th>Gumroad</th><th></th>
         </tr>
       </thead>
       <tbody>
         {% for u in users %}
         <tr>
-          <td>{{ u.email }}</td>
+          <td>
+            {{ u.email }}
+            {% if u.is_admin %}<span class="badge badge-uploaded">admin</span>{% endif %}
+            {% if not u.email_verified and not u.is_admin %}
+              <span class="muted">· email non confirmé</span>
+            {% endif %}
+          </td>
           <td>{{ u.audio_used or 0 }} / {{ free_audio }}</td>
           <td>{{ u.video_used or 0 }} / {{ free_video }}</td>
           <td>
-            {% if u.subscribed %}
-              <span class="badge badge-done">Illimité</span>
+            {% if u.is_admin %}
+              <span class="badge badge-done">Admin</span>
+            {% elif u.subscribed %}
+              <span class="badge badge-done">Abonné</span>
             {% else %}
               <span class="muted">Essai gratuit</span>
             {% endif %}
           </td>
+          <td class="muted" style="font-size:.72rem">{{ u.gumroad_subscription_id or '—' }}</td>
           <td>
             <form method="post" action="/admin/users/{{ u.id }}/sub">
               <button type="submit" class="btn-soft">
-                {% if u.subscribed %}Repasser en essai{% else %}Activer l'abonnement{% endif %}
+                {% if u.subscribed %}Couper l'abo{% else %}Activer l'abo{% endif %}
               </button>
             </form>
           </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Paiements en attente</h2>
+  <p class="muted">Paiements Gumroad reçus pour un email sans compte {{ app_name }}.
+  Appliqués automatiquement dès que la personne s'inscrit avec cet email.</p>
+  {% if not pending %}
+    <p class="muted">Aucun.</p>
+  {% else %}
+  <div class="admin-table-wrap">
+    <table class="notes admin-table">
+      <thead>
+        <tr><th>Email</th><th>État</th><th>Abonnement</th><th>Reçu le</th></tr>
+      </thead>
+      <tbody>
+        {% for p in pending %}
+        <tr>
+          <td>{{ p.email }}</td>
+          <td>{% if p.active %}<span class="badge badge-done">actif</span>{% else %}<span class="muted">annulé</span>{% endif %}</td>
+          <td class="muted" style="font-size:.72rem">{{ p.subscription_id or '—' }}</td>
+          <td>{{ (p.created_at or '').replace("T", " ")[:16] }}</td>
         </tr>
         {% endfor %}
       </tbody>

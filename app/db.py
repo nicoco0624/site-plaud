@@ -64,6 +64,18 @@ CREATE TABLE IF NOT EXISTS users (
 )
 """
 
+# Paiements Gumroad reçus pour un email qui n'a pas encore de compte : on les
+# garde ici et on les applique automatiquement à la création du compte.
+_CREATE_PENDING = """
+CREATE TABLE IF NOT EXISTS pending_payments (
+    email           TEXT PRIMARY KEY,
+    active          INTEGER NOT NULL DEFAULT 1,
+    subscription_id TEXT,
+    created_at      TEXT NOT NULL,
+    raw             TEXT
+)
+"""
+
 # Colonnes ajoutées après coup : (nom, type). Appliquées si absentes, pour ne pas
 # casser une base créée par une version antérieure.
 _MIGRATIONS = [
@@ -76,10 +88,12 @@ _MIGRATIONS = [
 ]
 
 _USER_MIGRATIONS = [
-    ("audio_used", "INTEGER NOT NULL DEFAULT 0"),
-    ("video_used", "INTEGER NOT NULL DEFAULT 0"),
-    ("subscribed", "INTEGER NOT NULL DEFAULT 0"),
+    ("audio_used", "INTEGER NOT NULL DEFAULT 0"),      # essai_audio_utilise : >=1 => essai consommé
+    ("video_used", "INTEGER NOT NULL DEFAULT 0"),      # essai_video_utilise : >=1 => essai consommé
+    ("subscribed", "INTEGER NOT NULL DEFAULT 0"),      # abonnement_actif
     ("email_verified", "INTEGER NOT NULL DEFAULT 0"),
+    ("is_admin", "INTEGER NOT NULL DEFAULT 0"),        # est_admin (en base, en plus de ADMIN_EMAILS)
+    ("gumroad_subscription_id", "TEXT"),               # id d'abonnement Gumroad, pour recouper les annulations
 ]
 
 
@@ -198,6 +212,7 @@ def init_db() -> None:
     for name, ddl in _USER_MIGRATIONS:
         if name not in ucols:
             _q(f"ALTER TABLE users ADD COLUMN {name} {ddl}")
+    _q(_CREATE_PENDING)
 
 
 # ----- utilisateurs -----
@@ -234,6 +249,50 @@ def set_subscribed(user_id: str, value: bool) -> None:
     _q("UPDATE users SET subscribed = ? WHERE id = ?", (1 if value else 0, user_id))
 
 
+def set_admin(user_id: str, value: bool = True) -> None:
+    _q("UPDATE users SET is_admin = ? WHERE id = ?", (1 if value else 0, user_id))
+
+
+def set_subscription_by_email(
+    email: str, active: bool, subscription_id: str | None = None
+) -> bool:
+    """Active/coupe l'abonnement du compte portant cet email (matching Gumroad).
+    Renvoie True si un compte a été trouvé et mis à jour, False sinon."""
+    if not get_user_by_email(email):
+        return False
+    _q(
+        "UPDATE users SET subscribed = ?, "
+        "gumroad_subscription_id = COALESCE(?, gumroad_subscription_id) "
+        "WHERE email = ?",
+        (1 if active else 0, subscription_id, email.lower()),
+    )
+    return True
+
+
+# ----- paiements en attente (email sans compte au moment du webhook) -----
+
+def add_pending_payment(
+    email: str, active: bool, subscription_id: str | None, raw: str | None
+) -> None:
+    _q(
+        "INSERT INTO pending_payments (email, active, subscription_id, created_at, raw) "
+        "VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(email) DO UPDATE SET active = excluded.active, "
+        "subscription_id = excluded.subscription_id, created_at = excluded.created_at, "
+        "raw = excluded.raw",
+        (email.lower(), 1 if active else 0, subscription_id, _now(), raw),
+    )
+
+
+def get_pending_payment(email: str) -> dict | None:
+    rows = _q("SELECT * FROM pending_payments WHERE email = ?", (email.lower(),))
+    return rows[0] if rows else None
+
+
+def delete_pending_payment(email: str) -> None:
+    _q("DELETE FROM pending_payments WHERE email = ?", (email.lower(),))
+
+
 def set_email_verified(user_id: str, value: bool = True) -> None:
     _q("UPDATE users SET email_verified = ? WHERE id = ?",
        (1 if value else 0, user_id))
@@ -249,8 +308,13 @@ def delete_user(user_id: str) -> None:
 def list_users() -> list[dict]:
     return _q(
         "SELECT id, email, created_at, audio_used, video_used, subscribed, "
-        "email_verified FROM users ORDER BY created_at"
+        "email_verified, is_admin, gumroad_subscription_id "
+        "FROM users ORDER BY created_at"
     )
+
+
+def list_pending_payments() -> list[dict]:
+    return _q("SELECT * FROM pending_payments ORDER BY created_at")
 
 
 # ----- notes -----

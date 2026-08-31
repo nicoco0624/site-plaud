@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Abonnement — {{ app_name }}{% endblock %}
+{% block subhead %}{% endblock %}
+
+{% block content %}
+<p class="back-link"><a href="/">← Accueil</a></p>
+
+<section class="card abo">
+  {% if active %}
+    <h2>Abonnement</h2>
+    <p class="muted">Ton accès est <strong>actif</strong> : Résumé Audio et Résumé
+    Vidéo sont illimités. Merci&nbsp;!</p>
+  {% else %}
+    <h1 class="abo-title">Merci de t'abonner pour continuer</h1>
+    <p class="abo-sub">
+      Tes 2&nbsp;essais gratuits (1&nbsp;audio + 1&nbsp;vidéo) sont utilisés.
+      L'abonnement débloque un accès <strong>illimité</strong> au Résumé Audio
+      et au Résumé Vidéo.
+    </p>
+    <ul class="abo-tiers">
+      <li>Mensuel</li><li>Trimestriel</li><li>Semestriel</li><li>Annuel</li>
+    </ul>
+    <a class="abo-cta" href="{{ gumroad_url }}" target="_blank" rel="noopener">
+      Choisir une formule sur Gumroad →
+    </a>
+    <p class="abo-note">
+      Utilise <strong>la même adresse email</strong>
+      (<strong>{{ user.email }}</strong>) sur Gumroad : ton accès {{ app_name }}
+      s'active <strong>automatiquement</strong> juste après le paiement.
+      Aucune carte n'est stockée par {{ app_name }}, tout passe par Gumroad.
+    </p>
+  {% endif %}
+</section>
+{% endblock %}

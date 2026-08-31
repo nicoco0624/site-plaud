@@ -35,7 +35,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app import ai, auth, b2, db, mailer, pipeline, ratelimit, storage, youtube
+from app import (
+    ai, auth, b2, db, gumroad, mailer, pipeline, ratelimit, storage, youtube,
+)
 from app.config import BASE_DIR, get_settings
 
 logging.basicConfig(
@@ -146,6 +148,7 @@ templates.env.globals["PENDING_STATUSES"] = PENDING_STATUSES
 templates.env.globals["STATUS_LABELS"] = STATUS_LABELS
 templates.env.globals["app_name"] = settings.app_name
 templates.env.globals["app_tagline"] = settings.app_tagline
+templates.env.globals["gumroad_url"] = settings.gumroad_product_url
 
 
 # --------------------------------------------------------------------------- #
@@ -153,17 +156,21 @@ templates.env.globals["app_tagline"] = settings.app_tagline
 # --------------------------------------------------------------------------- #
 _SESSION_COOKIE = "plaud_session"
 _EXEMPT_EXACT = {"/login", "/register", "/logout", "/forgot", "/reset",
-                 "/verify", "/tasks/backup", "/healthz", "/favicon.ico"}
+                 "/verify", "/tasks/backup", "/webhook/gumroad",
+                 "/healthz", "/favicon.ico"}
 _EXEMPT_PREFIX = ("/static/",)
 _SENSITIVE_USER_FIELDS = {"password_hash"}
 
 
 def _public_user(row: dict | None) -> dict | None:
-    """Retire les champs sensibles, ajoute le drapeau admin."""
+    """Retire les champs sensibles, ajoute le drapeau admin.
+    Admin = colonne `is_admin` en base OU email présent dans ADMIN_EMAILS."""
     if not row:
         return None
     u = {k: v for k, v in row.items() if k not in _SENSITIVE_USER_FIELDS}
-    u["is_admin"] = (u.get("email") or "").lower() in settings.admin_emails_list
+    u["is_admin"] = bool(row.get("is_admin")) or (
+        (u.get("email") or "").lower() in settings.admin_emails_list
+    )
     return u
 
 
@@ -173,14 +180,23 @@ def _current_user(request: Request) -> dict | None:
 
 
 # --------------------------------------------------------------------------- #
-#  Essais gratuits / abonnement
+#  Essais gratuits / abonnement — logique de vérification
+#
+#  Avant chaque résumé (audio ou vidéo), _feature_allowed() applique cet ordre :
+#    1. est_admin        -> accès illimité, aucune restriction
+#    2. abonnement_actif -> accès illimité, aucune restriction
+#    3. essai correspondant encore disponible (audio_used / video_used < 1)
+#         -> autorisé ; le compteur est incrémenté APRÈS un usage réussi
+#            (db.bump_usage dans /upload et /video)
+#    4. sinon            -> bloqué -> page /abonnement
 # --------------------------------------------------------------------------- #
-_PAYWALL_MSG = ("Essai gratuit déjà utilisé. Abonne-toi ({price}) pour un "
-                "accès illimité au Résumé Audio et au Résumé Vidéo.")
+_PAYWALL_MSG = ("Tes 2 essais gratuits sont utilisés. Abonne-toi pour continuer "
+                "à utiliser le Résumé Audio et le Résumé Vidéo.")
 
 
 def _feature_left(user: dict, feature: str) -> int | None:
-    """Usages gratuits restants pour 'audio' / 'video'. None = illimité."""
+    """Essais gratuits restants pour 'audio' / 'video'. None = illimité
+    (compte admin ou abonnement actif)."""
     if user.get("is_admin") or user.get("subscribed"):
         return None
     free = settings.free_audio if feature == "audio" else settings.free_video
@@ -189,12 +205,13 @@ def _feature_left(user: dict, feature: str) -> int | None:
 
 
 def _feature_allowed(user: dict, feature: str) -> bool:
+    """True si l'utilisateur peut lancer un résumé de ce type (cf. ordre ci-dessus)."""
     left = _feature_left(user, feature)
     return left is None or left > 0
 
 
 def _paywall_msg() -> str:
-    return _PAYWALL_MSG.format(price=settings.subscription_label)
+    return _PAYWALL_MSG
 
 
 _VERIFY_MSG = ("Confirme d'abord ton adresse email : on t'a envoyé un lien à "
@@ -202,8 +219,10 @@ _VERIFY_MSG = ("Confirme d'abord ton adresse email : on t'a envoyé un lien à "
 
 
 def _email_ok(user: dict) -> bool:
-    """L'adresse email est confirmée (ou compte admin)."""
-    return bool(user.get("is_admin") or user.get("email_verified"))
+    """Adresse email confirmée — ou compte admin, ou abonné payant (qui a de
+    toute façon prouvé son email via Gumroad)."""
+    return bool(user.get("is_admin") or user.get("subscribed")
+                or user.get("email_verified"))
 
 
 def _set_session(resp: Response, request: Request, user_id: str) -> None:
@@ -452,6 +471,18 @@ def register_submit(
         password_hash=auth.hash_password(password),
     )
     slog.info("register email=%s ip=%s", email, ip)
+
+    # Paiement Gumroad reçu avant la création du compte -> on l'applique.
+    pending = db.get_pending_payment(email)
+    if pending and pending.get("active"):
+        db.set_subscribed(user["id"], True)
+        db.set_email_verified(user["id"])  # email prouvé via Gumroad
+        db.delete_pending_payment(email)
+        slog.info("register: paiement en attente appliqué pour %s", email)
+        resp = RedirectResponse("/", status_code=303)
+        _set_session(resp, request, user["id"])
+        return resp
+
     try:
         link = f"{_base_url(request)}/verify?token={auth.make_verify_token(user)}"
         mailer.send_verification_email(email, link)
@@ -622,6 +653,66 @@ def tasks_backup(key: str = ""):
     return {"ok": True, "key": bkey, "bytes": len(dump)}
 
 
+# --------------------------------------------------------------------------- #
+#  Webhook Gumroad (activation / désactivation automatique de l'abonnement)
+# --------------------------------------------------------------------------- #
+
+@app.post("/webhook/gumroad")
+async def webhook_gumroad(request: Request):
+    """Appelé par Gumroad à chaque vente / annulation / remboursement.
+    Public (pas d'auth de session), mais on vérifie que la requête vient bien
+    de Gumroad (seller_id + produit, et re-vérification API si access token).
+    Renvoie toujours 200 pour éviter les ré-essais en boucle de Gumroad."""
+    raw = await request.body()
+    payload = gumroad.parse_body(raw, request.headers.get("content-type", ""))
+    # Log de debug (sans le payload complet en prod : on garde les champs clés).
+    slog.info(
+        "webhook gumroad ip=%s champs=%s email=%s seller=%s permalink=%s "
+        "sale=%s sub=%s cancelled=%s refunded=%s test=%s",
+        _client_ip(request), sorted(payload)[:20], payload.get("email"),
+        payload.get("seller_id"), payload.get("product_permalink"),
+        payload.get("sale_id"), payload.get("subscription_id"),
+        payload.get("cancelled"), payload.get("refunded"), payload.get("test"),
+    )
+
+    if not gumroad.seller_ok(payload):
+        slog.warning("webhook gumroad REJETÉ (seller/produit non reconnu)")
+        return JSONResponse({"ok": False, "reason": "unrecognized"}, status_code=200)
+
+    email, active, sub_id, event = gumroad.classify(payload)
+    if not email or active is None:
+        slog.info("webhook gumroad ignoré (event=%s email=%s)", event, email)
+        return JSONResponse({"ok": True, "ignored": True}, status_code=200)
+
+    # Re-vérification forte de la vente (si access token configuré).
+    if active and payload.get("sale_id"):
+        sale = gumroad.verify_sale(payload["sale_id"])
+        if sale is not None:
+            api_email = (sale.get("email") or "").strip().lower()
+            if api_email and api_email != email:
+                slog.warning("webhook gumroad: email payload != API (%s / %s)",
+                             email, api_email)
+                return JSONResponse({"ok": False}, status_code=200)
+            if sale.get("refunded") or sale.get("chargebacked"):
+                active = False
+        elif settings.gumroad_access_token:
+            slog.warning("webhook gumroad: vente %s non confirmée par l'API",
+                         payload["sale_id"])
+            return JSONResponse({"ok": False}, status_code=200)
+
+    if db.set_subscription_by_email(email, active, sub_id):
+        slog.info("webhook gumroad: compte %s -> abonnement_actif=%s (%s)",
+                  email, active, event)
+    elif active:
+        db.add_pending_payment(email, True, sub_id, json.dumps(payload)[:4000])
+        slog.info("webhook gumroad: pas de compte pour %s -> paiement en attente", email)
+    else:
+        db.delete_pending_payment(email)
+        slog.info("webhook gumroad: annulation pour %s (aucun compte)", email)
+
+    return JSONResponse({"ok": True}, status_code=200)
+
+
 def _owned_note_or_404(note_id: str, user: dict, request: Request) -> dict:
     note = db.get_note(note_id)
     if not note or note.get("user_id") != user["id"]:
@@ -649,6 +740,19 @@ def home(request: Request, user: dict = Depends(require_user)):
             "audio_left": _feature_left(user, "audio"),
             "video_left": _feature_left(user, "video"),
             "price": settings.subscription_label,
+        },
+    )
+
+
+@app.get("/abonnement", response_class=HTMLResponse)
+def abonnement_page(request: Request, user: dict = Depends(require_user)):
+    """Page affichée quand l'accès est bloqué (2 essais utilisés, pas d'abo)."""
+    return templates.TemplateResponse(
+        request, "abonnement.html",
+        {
+            "user": user,
+            "active": bool(user.get("is_admin") or user.get("subscribed")),
+            "gumroad_url": settings.gumroad_product_url,
         },
     )
 
@@ -692,16 +796,16 @@ def video_generate(
     """Récupère les sous-titres de la vidéo puis génère la fiche via l'IA.
     Renvoie toujours 200 : le résultat (fiche ou message d'erreur) est swappé
     dans #video-result par HTMX."""
-    def _err(msg: str):
+    def _err(msg: str, paywall: bool = False):
         return templates.TemplateResponse(
-            request, "_video_result.html", {"error": msg}
+            request, "_video_result.html", {"error": msg, "paywall": paywall}
         )
 
     if not _email_ok(user):
         return _err(_VERIFY_MSG)
 
     if not _feature_allowed(user, "video"):
-        return _err(_paywall_msg())
+        return _err(_paywall_msg(), paywall=True)
 
     if not user.get("is_admin") and not ratelimit.allow(
         f"video:{user['id']}", settings.video_per_hour, 3600
@@ -778,6 +882,7 @@ def admin_dashboard(request: Request, user: dict = Depends(require_user)):
             "rows": rows,
             "stats": db.global_stats(),
             "users": db.list_users(),
+            "pending": db.list_pending_payments(),
             "free_audio": settings.free_audio,
             "free_video": settings.free_video,
         },
@@ -977,11 +1082,11 @@ async def upload(
             request, "_upload_result.html", {"error": _VERIFY_MSG}, status_code=403,
         )
 
-    # Essai gratuit épuisé -> abonnement requis.
+    # Essais gratuits épuisés -> abonnement requis.
     if not _feature_allowed(user, "audio"):
         return templates.TemplateResponse(
             request, "_upload_result.html",
-            {"error": _paywall_msg()},
+            {"error": _paywall_msg(), "paywall": True},
             status_code=402,
         )
 

@@ -1,4 +1,12 @@
-{% if error %}
+{% if paywall %}
+  <section class="card">
+    <div class="paywall">
+      <strong>Abonne-toi pour continuer</strong>
+      <p>{{ error }}</p>
+      <p><a class="paywall-cta" href="/abonnement">Voir les formules →</a></p>
+    </div>
+  </section>
+{% elif error %}
   <section class="card"><p class="alert error">{{ error }}</p></section>
 {% elif sheet %}
   <section class="card video-sheet">

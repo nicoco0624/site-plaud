@@ -1,4 +1,10 @@
-{% if error %}
+{% if paywall %}
+  <div class="paywall">
+    <strong>Abonne-toi pour continuer</strong>
+    <p>{{ error }}</p>
+    <p><a class="paywall-cta" href="/abonnement">Voir les formules →</a></p>
+  </div>
+{% elif error %}
   <p class="alert error">❌ {{ error }}</p>
 {% elif note %}
   <p class="alert ok">✅ « {{ note.original_filename }} » reçu ({{ note.size_bytes | human_size }}) — statut : {{ note.status }}</p>

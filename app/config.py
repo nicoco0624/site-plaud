@@ -38,7 +38,18 @@ class Settings(BaseSettings):
     # --- Essais gratuits / abonnement ---
     free_audio: int = 1              # résumés audio gratuits par compte
     free_video: int = 1             # fiches vidéo gratuites par compte
-    subscription_label: str = "10 €/mois"
+    subscription_label: str = "plusieurs formules"
+
+    # --- Gumroad (abonnement payant) ---
+    gumroad_product_url: str = "https://novastudio47.gumroad.com/l/Veyra"
+    gumroad_product_permalink: str = "Veyra"   # champ product_permalink du webhook (comparé sans casse)
+    gumroad_product_id: str = ""               # id produit Gumroad (contrôle webhook)
+    gumroad_seller_id: str = ""                # id vendeur Gumroad (contrôle webhook)
+    gumroad_access_token: str = ""             # token API Gumroad (re-vérification de chaque vente)
+
+    @property
+    def gumroad_configured(self) -> bool:
+        return bool(self.gumroad_seller_id or self.gumroad_access_token)
 
     # --- Résumé Vidéo (YouTube) ---
     video_max_minutes: int = 90              # au-delà : « vidéo trop longue »
