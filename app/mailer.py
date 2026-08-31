@@ -335,6 +335,27 @@ def send_reset_email(to: str, link: str) -> str:
                      text, _simple_shell("Mot de passe oublié", inner))
 
 
+def send_verification_email(to: str, link: str) -> str:
+    """Envoie le lien de confirmation d'adresse email (à l'inscription)."""
+    app = get_settings().app_name
+    btn = (
+        f'<a href="{escape(link)}" style="display:inline-block;margin:18px 0;'
+        f'padding:13px 26px;border-radius:12px;background:#8a6d16;color:#fff;'
+        f'font-weight:700;text-decoration:none;">Confirmer mon adresse</a>'
+    )
+    inner = (
+        f"<p>Bienvenue sur {escape(app)}&nbsp;! Confirme ton adresse email pour "
+        "activer ton compte. Ce lien est valable 7&nbsp;jours&nbsp;:</p>"
+        f"{btn}"
+        f'<p style="font-size:13px;color:#8a8374;word-break:break-all;">{escape(link)}</p>'
+        "<p style=\"font-size:13px;color:#8a8374;\">Si tu n'es pas à l'origine de "
+        "cette inscription, ignore cet email.</p>"
+    )
+    text = f"Confirme ton adresse pour activer ton compte {app} (valable 7 jours) : {link}"
+    return _dispatch(to, f"Confirme ton adresse — {app}",
+                     text, _simple_shell("Confirmation d'adresse", inner))
+
+
 def send_video_sheet(to: str, video_url: str, video_title: str, sheet: dict) -> str:
     """Envoie la fiche de révision d'une vidéo + le lien de la vidéo."""
     F = "-apple-system,Segoe UI,Roboto,Arial,sans-serif"

@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     max_notes_per_user: int = 100     # nombre total de notes par utilisateur
     admin_emails: str = ""            # comptes admin, emails séparés par des virgules
 
+    # Clé secrète pour l'endpoint de sauvegarde /tasks/backup (appelé par un cron
+    # externe). Vide -> endpoint désactivé (404).
+    backup_key: str = ""
+
     # --- Essais gratuits / abonnement ---
     free_audio: int = 1              # résumés audio gratuits par compte
     free_video: int = 1             # fiches vidéo gratuites par compte

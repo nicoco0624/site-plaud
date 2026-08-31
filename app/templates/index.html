@@ -25,7 +25,13 @@
   <section class="tab-panel panel-upload card">
     <h2>Nouvel enregistrement</h2>
 
-    {% if not audio_allowed %}
+    {% if not email_ok %}
+    <div class="paywall">
+      <strong>Confirme ton adresse email</strong>
+      <p>On t'a envoyé un lien à l'inscription. Clique dessus (ou
+      <a href="/verify">renvoie l'email</a>) pour débloquer le Résumé Audio.</p>
+    </div>
+    {% elif not audio_allowed %}
     <div class="paywall">
       <strong>Essai gratuit déjà utilisé</strong>
       <p>Abonne-toi ({{ price }}) pour un accès illimité au Résumé Audio et au Résumé Vidéo.

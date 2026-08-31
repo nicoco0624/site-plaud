@@ -5,12 +5,14 @@ Pipeline : upload (fichier ou micro) -> transcription (Groq Whisper) -> résumé
 Comptes email + mot de passe, notes cloisonnées par utilisateur.
 """
 
+import hmac
 import json
 import logging
 import mimetypes
 import shutil
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import (
@@ -151,7 +153,7 @@ templates.env.globals["app_tagline"] = settings.app_tagline
 # --------------------------------------------------------------------------- #
 _SESSION_COOKIE = "plaud_session"
 _EXEMPT_EXACT = {"/login", "/register", "/logout", "/forgot", "/reset",
-                 "/healthz", "/favicon.ico"}
+                 "/verify", "/tasks/backup", "/healthz", "/favicon.ico"}
 _EXEMPT_PREFIX = ("/static/",)
 _SENSITIVE_USER_FIELDS = {"password_hash"}
 
@@ -193,6 +195,15 @@ def _feature_allowed(user: dict, feature: str) -> bool:
 
 def _paywall_msg() -> str:
     return _PAYWALL_MSG.format(price=settings.subscription_label)
+
+
+_VERIFY_MSG = ("Confirme d'abord ton adresse email : on t'a envoyé un lien à "
+               "l'inscription (pense à vérifier les spams).")
+
+
+def _email_ok(user: dict) -> bool:
+    """L'adresse email est confirmée (ou compte admin)."""
+    return bool(user.get("is_admin") or user.get("email_verified"))
 
 
 def _set_session(resp: Response, request: Request, user_id: str) -> None:
@@ -248,11 +259,12 @@ def require_user(request: Request) -> dict:
 
 
 @app.get("/login", response_class=HTMLResponse)
-def login_form(request: Request, next: str = "/"):
+def login_form(request: Request, next: str = "/", deleted: int = 0):
     if _current_user(request):
         return RedirectResponse("/", status_code=303)
     return templates.TemplateResponse(
-        request, "login.html", {"next_url": next, "error": None}
+        request, "login.html",
+        {"next_url": next, "error": None, "deleted": bool(deleted)},
     )
 
 
@@ -440,7 +452,12 @@ def register_submit(
         password_hash=auth.hash_password(password),
     )
     slog.info("register email=%s ip=%s", email, ip)
-    resp = RedirectResponse("/", status_code=303)
+    try:
+        link = f"{_base_url(request)}/verify?token={auth.make_verify_token(user)}"
+        mailer.send_verification_email(email, link)
+    except Exception:  # noqa: BLE001 — non bloquant, l'utilisateur peut renvoyer
+        slog.exception("envoi email de confirmation KO email=%s", email)
+    resp = RedirectResponse("/verify", status_code=303)
     _set_session(resp, request, user["id"])
     return resp
 
@@ -454,6 +471,155 @@ def logout(request: Request):
     resp = RedirectResponse("/login", status_code=303)
     resp.delete_cookie(_SESSION_COOKIE)
     return resp
+
+
+# --------------------------------------------------------------------------- #
+#  Confirmation d'adresse email
+# --------------------------------------------------------------------------- #
+
+@app.get("/verify", response_class=HTMLResponse)
+def verify(request: Request, token: str = ""):
+    """Lien reçu par email. Sans token : page « on t'a envoyé un email »."""
+    user = _current_user(request)
+    if token:
+        uid = auth.read_verify_token(token)
+        target = db.get_user(uid) if uid else None
+        if not target:
+            return templates.TemplateResponse(
+                request, "verify.html",
+                {"state": "invalid",
+                 "message": "Lien invalide ou expiré. Connecte-toi et demande un "
+                            "nouvel email de confirmation.",
+                 "email": (user or {}).get("email")},
+                status_code=400,
+            )
+        if not target.get("email_verified"):
+            db.set_email_verified(target["id"])
+            slog.info("email confirmé user=%s", target["id"])
+        resp = RedirectResponse("/", status_code=303)
+        _set_session(resp, request, target["id"])
+        return resp
+
+    if user and user.get("email_verified"):
+        return RedirectResponse("/", status_code=303)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(
+        request, "verify.html",
+        {"state": "sent", "message": None, "email": user["email"]},
+    )
+
+
+@app.post("/verify/resend", response_class=HTMLResponse)
+def verify_resend(request: Request, user: dict = Depends(require_user)):
+    if user.get("email_verified"):
+        return RedirectResponse("/", status_code=303)
+    ip = _client_ip(request)
+    if not (ratelimit.allow(f"verify-ip:{ip}", 5, 1800)
+            and ratelimit.allow(f"verify-acct:{user['id']}", 3, 1800)):
+        return templates.TemplateResponse(
+            request, "verify.html",
+            {"state": "sent", "email": user["email"],
+             "message": "Trop de demandes. Réessaie dans quelques minutes."},
+            status_code=429,
+        )
+    try:
+        link = f"{_base_url(request)}/verify?token={auth.make_verify_token(user)}"
+        mailer.send_verification_email(user["email"], link)
+        slog.info("email de confirmation renvoyé user=%s", user["id"])
+        msg = f"Nouvel email envoyé à {user['email']}."
+    except Exception:  # noqa: BLE001
+        slog.exception("renvoi email confirmation KO user=%s", user["id"])
+        msg = "L'envoi a échoué. Réessaie dans un moment."
+    return templates.TemplateResponse(
+        request, "verify.html",
+        {"state": "sent", "email": user["email"], "message": msg},
+    )
+
+
+# --------------------------------------------------------------------------- #
+#  Mon compte (conso + suppression RGPD)
+# --------------------------------------------------------------------------- #
+
+@app.get("/account", response_class=HTMLResponse)
+def account_page(request: Request, user: dict = Depends(require_user)):
+    return templates.TemplateResponse(
+        request, "account.html",
+        {
+            "user": user,
+            "audio_left": _feature_left(user, "audio"),
+            "video_left": _feature_left(user, "video"),
+            "free_audio": settings.free_audio,
+            "free_video": settings.free_video,
+            "price": settings.subscription_label,
+            "error": None,
+        },
+    )
+
+
+@app.post("/account/delete")
+def account_delete(
+    request: Request, password: str = Form(""), user: dict = Depends(require_user)
+):
+    """Suppression définitive du compte + de toutes ses données (RGPD)."""
+    full = db.get_user(user["id"])
+    if not full or not auth.verify_password(password, full["password_hash"]):
+        return templates.TemplateResponse(
+            request, "account.html",
+            {
+                "user": user,
+                "audio_left": _feature_left(user, "audio"),
+                "video_left": _feature_left(user, "video"),
+                "free_audio": settings.free_audio,
+                "free_video": settings.free_video,
+                "price": settings.subscription_label,
+                "error": "Mot de passe incorrect.",
+            },
+            status_code=400,
+        )
+
+    for note in db.list_notes(user["id"], limit=10000):
+        for entry in json.loads(note.get("archive_links") or "[]"):
+            if entry.get("provider") == "b2" and entry.get("key"):
+                try:
+                    b2.delete(entry["key"])
+                except Exception:  # noqa: BLE001
+                    slog.warning("échec suppression B2 key=%s", entry["key"])
+        local = _resolve_inside(str(Path(note["stored_path"]).parent))
+        if local and local.is_dir() and local != BASE_DIR.resolve():
+            shutil.rmtree(local, ignore_errors=True)
+
+    db.delete_user(user["id"])
+    slog.info("compte supprimé user=%s email=%s ip=%s",
+              user["id"], user["email"], _client_ip(request))
+    resp = RedirectResponse("/login?deleted=1", status_code=303)
+    resp.delete_cookie(_SESSION_COOKIE)
+    return resp
+
+
+# --------------------------------------------------------------------------- #
+#  Sauvegarde (appelée par un cron externe avec ?key=…)
+# --------------------------------------------------------------------------- #
+
+@app.get("/tasks/backup")
+def tasks_backup(key: str = ""):
+    """Dump JSON (users + notes) vers B2 sous backups/. Désactivé si BACKUP_KEY
+    n'est pas défini. À planifier via un cron externe (cron-job.org)."""
+    if not settings.backup_key or not hmac.compare_digest(key, settings.backup_key):
+        raise HTTPException(status_code=404, detail="Not found")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    dump = json.dumps(
+        {"ts": ts, "users": db.list_users(), "notes": db.list_all_notes(limit=100000)},
+        ensure_ascii=False, default=str,
+    )
+    bkey = f"backups/veyra-{ts}.json"
+    try:
+        b2.put_text(dump, bkey)
+    except Exception as exc:  # noqa: BLE001
+        slog.exception("sauvegarde KO")
+        raise HTTPException(status_code=500, detail="backup failed") from exc
+    slog.info("sauvegarde OK -> %s (%d o)", bkey, len(dump))
+    return {"ok": True, "key": bkey, "bytes": len(dump)}
 
 
 def _owned_note_or_404(note_id: str, user: dict, request: Request) -> dict:
@@ -498,6 +664,7 @@ def audio_app(request: Request, user: dict = Depends(require_user)):
             "max_upload_mb": settings.max_upload_mb,
             "notes_count": db.count_notes(user["id"]),
             "audio_allowed": _feature_allowed(user, "audio"),
+            "email_ok": _email_ok(user),
             "price": settings.subscription_label,
         },
     )
@@ -512,6 +679,7 @@ def video_page(request: Request, user: dict = Depends(require_user)):
             "user": user,
             "max_minutes": settings.video_max_minutes,
             "video_allowed": _feature_allowed(user, "video"),
+            "email_ok": _email_ok(user),
             "price": settings.subscription_label,
         },
     )
@@ -528,6 +696,9 @@ def video_generate(
         return templates.TemplateResponse(
             request, "_video_result.html", {"error": msg}
         )
+
+    if not _email_ok(user):
+        return _err(_VERIFY_MSG)
 
     if not _feature_allowed(user, "video"):
         return _err(_paywall_msg())
@@ -800,6 +971,11 @@ async def upload(
     user: dict = Depends(require_user),
 ):
     ip = _client_ip(request)
+
+    if not _email_ok(user):
+        return templates.TemplateResponse(
+            request, "_upload_result.html", {"error": _VERIFY_MSG}, status_code=403,
+        )
 
     # Essai gratuit épuisé -> abonnement requis.
     if not _feature_allowed(user, "audio"):

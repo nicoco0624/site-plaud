@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Confirme ton adresse — {{ app_name }}{% endblock %}
+{% block subhead %}{% endblock %}
+
+{% block content %}
+<section class="card auth-card">
+  <h2>Confirmation d'adresse</h2>
+
+  {% if state == "invalid" %}
+    <p class="alert error">{{ message }}</p>
+  {% else %}
+    {% if message %}
+      <p class="alert ok">{{ message }}</p>
+    {% else %}
+      <p class="muted">
+        On a envoyé un lien de confirmation à
+        <strong>{{ email }}</strong>. Clique dessus pour activer ton compte
+        (pense à regarder dans les spams).
+      </p>
+    {% endif %}
+  {% endif %}
+
+  {% if user and not user.email_verified %}
+    <form method="post" action="/verify/resend" class="auth-form">
+      <button type="submit">Renvoyer l'email de confirmation</button>
+    </form>
+  {% endif %}
+  <p class="auth-switch"><a href="/">Retour à l'accueil</a></p>
+</section>
+{% endblock %}

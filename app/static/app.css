@@ -495,6 +495,54 @@ footer .dot {
 .auth-form button[type="submit"] { justify-self: stretch; text-align: center; }
 .auth-switch { margin: 16px 0 0; font-size: .86rem; color: var(--muted); }
 
+/* ---------- bandeau « confirme ton email » ---------- */
+.verify-bar {
+  max-width: var(--measure);
+  margin: 14px auto 0;
+  padding: 11px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: rgba(212, 175, 55, 0.06);
+  border-radius: var(--radius);
+  font-size: .86rem;
+  color: var(--ink-dim);
+}
+.verify-bar strong { color: var(--gold-soft); font-weight: 600; }
+.verify-bar form { margin-left: auto; }
+.verify-bar button {
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--gold-ink);
+  background: linear-gradient(180deg, #dcbb50, #cda52f);
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+@media (max-width: 560px) { .verify-bar { margin-left: 22px; margin-right: 22px; } }
+
+/* ---------- page « mon compte » ---------- */
+.account-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 24px;
+  margin: 0;
+  align-items: baseline;
+}
+.account-grid dt {
+  font-family: var(--mono);
+  font-size: .66rem;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.account-grid dd { margin: 0; color: var(--ink-dim); }
+@media (max-width: 460px) { .account-grid { grid-template-columns: 1fr; gap: 4px 0; } }
+
 /* barre de défilement */
 ::-webkit-scrollbar { height: 10px; width: 10px; }
 ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 999px; }

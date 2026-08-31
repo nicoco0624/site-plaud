@@ -79,6 +79,7 @@ _USER_MIGRATIONS = [
     ("audio_used", "INTEGER NOT NULL DEFAULT 0"),
     ("video_used", "INTEGER NOT NULL DEFAULT 0"),
     ("subscribed", "INTEGER NOT NULL DEFAULT 0"),
+    ("email_verified", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 
@@ -233,10 +234,22 @@ def set_subscribed(user_id: str, value: bool) -> None:
     _q("UPDATE users SET subscribed = ? WHERE id = ?", (1 if value else 0, user_id))
 
 
+def set_email_verified(user_id: str, value: bool = True) -> None:
+    _q("UPDATE users SET email_verified = ? WHERE id = ?",
+       (1 if value else 0, user_id))
+
+
+def delete_user(user_id: str) -> None:
+    """Supprime le compte et toutes ses notes (RGPD : droit à l'effacement).
+    Le nettoyage des fichiers B2 est fait par l'appelant, à partir de list_notes."""
+    _q("DELETE FROM notes WHERE user_id = ?", (user_id,))
+    _q("DELETE FROM users WHERE id = ?", (user_id,))
+
+
 def list_users() -> list[dict]:
     return _q(
-        "SELECT id, email, created_at, audio_used, video_used, subscribed "
-        "FROM users ORDER BY created_at"
+        "SELECT id, email, created_at, audio_used, video_used, subscribed, "
+        "email_verified FROM users ORDER BY created_at"
     )
 
 

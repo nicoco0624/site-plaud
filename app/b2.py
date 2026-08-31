@@ -41,6 +41,16 @@ def upload(local_path: Path, key: str) -> str:
     return key
 
 
+def put_text(text: str, key: str, content_type: str = "application/json") -> str:
+    """Écrit une chaîne directement sous la clé donnée (sans fichier local)."""
+    s = get_settings()
+    _client().put_object(
+        Bucket=s.b2_bucket, Key=key,
+        Body=text.encode("utf-8"), ContentType=content_type,
+    )
+    return key
+
+
 def delete(key: str) -> None:
     """Supprime un objet du bucket."""
     s = get_settings()

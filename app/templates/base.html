@@ -23,13 +23,19 @@
       <p class="tagline">{{ app_tagline }}</p>
     {% endblock %}
   </header>
+  {% if user and not user.is_admin and not user.email_verified %}
+  <div class="verify-bar">
+    <span>Confirme ton adresse <strong>{{ user.email }}</strong> pour activer ton compte.</span>
+    <form method="post" action="/verify/resend"><button type="submit">Renvoyer l'email</button></form>
+  </div>
+  {% endif %}
   <main>
     {% block content %}{% endblock %}
   </main>
   <footer>
     <span class="dot"></span>
     <span>Traitement 100&nbsp;% automatique — propulsé par Whisper &amp; un LLM</span>
-    {% if user %}<span class="user-chip">{{ user.email }} · <a class="logout-link" href="/logout">déconnexion</a></span>{% endif %}
+    {% if user %}<span class="user-chip">{{ user.email }} · <a class="logout-link" href="/account">mon compte</a> · <a class="logout-link" href="/logout">déconnexion</a></span>{% endif %}
   </footer>
 </body>
 </html>

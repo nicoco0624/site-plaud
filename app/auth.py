@@ -13,6 +13,7 @@ import time
 from app.config import get_settings
 
 PW_RESET_TTL = 3600  # secondes de validité d'un lien de réinitialisation
+EMAIL_VERIFY_TTL = 7 * 24 * 3600  # 7 jours pour confirmer son adresse
 
 _PBKDF2_ROUNDS = 300_000
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -104,3 +105,24 @@ def read_reset_token(token: str) -> tuple[str, str] | None:
     except ValueError:
         return None
     return uid, hp
+
+
+# ---------- confirmation d'adresse email ----------
+
+def make_verify_token(user: dict) -> str:
+    """Jeton de confirmation d'email : lié à l'utilisateur et daté."""
+    return sign(f"evr:{user['id']}:{int(time.time())}")
+
+
+def read_verify_token(token: str) -> str | None:
+    """Renvoie l'user_id si le jeton de confirmation est valide et non expiré."""
+    raw = unsign(token)
+    if not raw or not raw.startswith("evr:"):
+        return None
+    try:
+        _, uid, ts = raw.split(":")
+        if time.time() - int(ts) > EMAIL_VERIFY_TTL:
+            return None
+    except ValueError:
+        return None
+    return uid

@@ -9,7 +9,13 @@
 
 <section class="card">
   <h2>Résumé Vidéo</h2>
-  {% if not video_allowed %}
+  {% if not email_ok %}
+  <div class="paywall">
+    <strong>Confirme ton adresse email</strong>
+    <p>On t'a envoyé un lien à l'inscription. Clique dessus (ou
+    <a href="/verify">renvoie l'email</a>) pour débloquer le Résumé Vidéo.</p>
+  </div>
+  {% elif not video_allowed %}
   <div class="paywall">
     <strong>Essai gratuit déjà utilisé</strong>
     <p>Abonne-toi ({{ price }}) pour un accès illimité au Résumé Audio et au Résumé Vidéo.</p>

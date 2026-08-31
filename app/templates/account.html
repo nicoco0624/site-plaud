@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Mon compte — {{ app_name }}{% endblock %}
+{% block subhead %}{% endblock %}
+
+{% block content %}
+<p class="back-link"><a href="/">← Accueil</a></p>
+
+<section class="card">
+  <h2>Mon compte</h2>
+  <dl class="account-grid">
+    <dt>Adresse email</dt>
+    <dd>
+      {{ user.email }}
+      {% if user.email_verified or user.is_admin %}
+        <span class="trial-badge ok">confirmée</span>
+      {% else %}
+        <span class="trial-badge used">non confirmée</span>
+      {% endif %}
+    </dd>
+
+    <dt>Formule</dt>
+    <dd>
+      {% if user.is_admin %}
+        <span class="trial-badge ok">Admin — accès illimité</span>
+      {% elif user.subscribed %}
+        <span class="trial-badge ok">Abonné — accès illimité</span>
+      {% else %}
+        <span class="trial-badge used">Essai gratuit</span> · abonnement {{ price }}
+      {% endif %}
+    </dd>
+
+    <dt>Résumés audio</dt>
+    <dd>
+      {{ user.audio_used or 0 }} / {{ free_audio }} utilisés
+      {% if audio_left is not none %}· {{ audio_left }} restant(s){% endif %}
+    </dd>
+
+    <dt>Fiches vidéo</dt>
+    <dd>
+      {{ user.video_used or 0 }} / {{ free_video }} utilisées
+      {% if video_left is not none %}· {{ video_left }} restante(s){% endif %}
+    </dd>
+  </dl>
+</section>
+
+<section class="card">
+  <h2>Supprimer mon compte</h2>
+  <p class="muted">
+    Suppression <strong>définitive</strong> du compte, des notes, des
+    transcriptions et des fichiers archivés. Irréversible.
+  </p>
+  {% if error %}<p class="alert error">{{ error }}</p>{% endif %}
+  <form method="post" action="/account/delete" class="auth-form">
+    <input type="password" name="password" placeholder="Confirme avec ton mot de passe"
+           autocomplete="current-password" required>
+    <button type="submit" class="btn-soft danger">Supprimer définitivement mon compte</button>
+  </form>
+</section>
+{% endblock %}
