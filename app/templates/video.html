@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Résumé Vidéo — Site Plaud{% endblock %}
+{% block subhead %}
+  <p class="tagline">Colle un lien YouTube, récupère une fiche de révision structurée.</p>
+{% endblock %}
+
+{% block content %}
+<p class="back-link"><a href="/">← Accueil</a></p>
+
+<section class="card video-placeholder">
+  <h2>Résumé Vidéo</h2>
+  <span class="badge badge-uploaded">bientôt disponible</span>
+  <p class="muted" style="margin-top:14px;">
+    Cette fonctionnalité arrive prochainement : colle l'URL d'une vidéo YouTube
+    et obtiens sa transcription + une fiche de révision (idées clés, plan,
+    points à retenir).
+  </p>
+  <form class="video-form" action="/video" method="get">
+    <input type="url" placeholder="https://www.youtube.com/watch?v=…" disabled>
+    <button type="submit" disabled>Générer la fiche</button>
+  </form>
+</section>
+{% endblock %}

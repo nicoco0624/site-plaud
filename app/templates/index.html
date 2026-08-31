@@ -1,6 +1,18 @@
 {% extends "base.html" %}
 
+{% block subhead %}
+  <p class="tagline">Vos notes vocales, transcrites, résumées et archivées automatiquement.</p>
+  <nav class="pipeline">
+    <span>Upload</span>
+    <span>Transcription</span>
+    <span>Résumé</span>
+    <span>Archivage</span>
+    <span>Email</span>
+  </nav>
+{% endblock %}
+
 {% block content %}
+<p class="back-link"><a href="/">← Accueil</a></p>
 <div class="tabs">
   <input type="radio" name="tab" id="tab-upload" checked>
   <input type="radio" name="tab" id="tab-notes">

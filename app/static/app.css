@@ -75,7 +75,8 @@ header, main, footer { max-width: 860px; margin: 0 auto; padding: 0 24px; }
 
 /* ---------- header ---------- */
 header { padding: 54px 24px 8px; }
-.brand { display: flex; align-items: center; gap: 14px; }
+.brand { display: flex; align-items: center; gap: 14px; width: max-content; }
+.brand:hover { text-decoration: none; }
 .brand .logo {
   width: 46px;
   height: 46px;
@@ -687,4 +688,150 @@ footer .dot {
 
 @media (prefers-reduced-motion: reduce) {
   body::before, body::after, .brand .logo, header h1, footer .dot { animation: none; }
+}
+
+/* ---------- page d'accueil (choix audio / vidéo) ---------- */
+.home { text-align: center; padding: 18px 0 8px; }
+.home-title {
+  margin: 22px auto 0;
+  max-width: 680px;
+  font-size: clamp(1.7rem, 4.5vw, 2.5rem);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  background: var(--grad);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: hue 10s linear infinite;
+}
+.home-sub {
+  margin: 16px auto 0;
+  max-width: 540px;
+  color: var(--muted);
+  font-size: 1.02rem;
+  line-height: 1.6;
+}
+
+.home-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin: 38px 0 8px;
+  text-align: left;
+}
+.home-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 28px 26px 24px;
+  border-radius: 22px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 20px 50px -24px rgba(109, 94, 252, .4), inset 0 1px 0 rgba(255,255,255,.06);
+  transition: transform .18s ease, box-shadow .22s ease, border-color .18s ease;
+}
+.home-card:hover {
+  text-decoration: none;
+  transform: translateY(-6px);
+  border-color: var(--fuchsia);
+  box-shadow: 0 34px 70px -28px rgba(240, 56, 200, .55),
+              0 0 0 1px rgba(240, 56, 200, .35),
+              inset 0 1px 0 rgba(255,255,255,.1);
+}
+.home-card-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--grad);
+  box-shadow: 0 12px 34px -8px rgba(168, 85, 247, .75);
+}
+.home-card-icon svg { width: 28px; height: 28px; color: #fff; }
+.home-card h2 {
+  margin: 6px 0 0;
+  font-size: 1.25rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-transform: none;
+  font-family: inherit;
+}
+.home-card > p { margin: 0; color: var(--muted); font-size: .95rem; line-height: 1.55; }
+
+.trial-badge {
+  align-self: flex-start;
+  margin-top: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: .04em;
+  border: 1px solid transparent;
+}
+.trial-badge.ok {
+  color: var(--ok);
+  background: rgba(74, 222, 128, .12);
+  border-color: rgba(74, 222, 128, .4);
+}
+.trial-badge.used {
+  color: var(--warn);
+  background: rgba(251, 191, 36, .12);
+  border-color: rgba(251, 191, 36, .4);
+}
+
+.home-pricing {
+  margin: 34px auto 0;
+  color: var(--faint);
+  font-size: .88rem;
+}
+.home-pricing strong { color: var(--muted); }
+.home-pricing-tag {
+  font-family: var(--mono);
+  font-size: .64rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--faint);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 8px;
+  margin-right: 8px;
+}
+
+@media (max-width: 640px) {
+  .home-cards { grid-template-columns: 1fr; }
+}
+
+/* ---------- placeholder vidéo ---------- */
+.video-placeholder .video-form {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+  opacity: .55;
+}
+.video-placeholder input {
+  flex: 1;
+  min-width: 220px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: rgba(20, 10, 36, .5);
+  color: var(--ink);
+  font: inherit;
+}
+.video-placeholder button {
+  font: inherit;
+  font-weight: 650;
+  color: #fff;
+  background: var(--grad);
+  border: 0;
+  border-radius: 12px;
+  padding: 11px 20px;
+  cursor: not-allowed;
 }

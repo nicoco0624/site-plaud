@@ -442,9 +442,16 @@ def healthz() -> dict:
 
 
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request, user: dict = Depends(require_user)):
+def home(request: Request, user: dict = Depends(require_user)):
+    """Page d'accueil : choix entre Résumé Audio et Résumé Vidéo."""
     if user.get("is_admin"):
         return RedirectResponse("/admin", status_code=303)
+    return templates.TemplateResponse(request, "home.html", {"user": user})
+
+
+@app.get("/audio", response_class=HTMLResponse)
+def audio_app(request: Request, user: dict = Depends(require_user)):
+    """L'app Plaud existante (upload audio, transcription, résumé, notes)."""
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -454,6 +461,12 @@ def index(request: Request, user: dict = Depends(require_user)):
             "notes_count": db.count_notes(user["id"]),
         },
     )
+
+
+@app.get("/video", response_class=HTMLResponse)
+def video_page(request: Request, user: dict = Depends(require_user)):
+    """Résumé Vidéo — placeholder (fonctionnalité à venir)."""
+    return templates.TemplateResponse(request, "video.html", {"user": user})
 
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -632,7 +645,7 @@ def note_delete(
 
     db.delete_note(note_id)
     slog.info("note supprimée note=%s user=%s", note_id, user["id"])
-    headers = {"HX-Redirect": "/"} if back else {"HX-Trigger": "refreshNotes"}
+    headers = {"HX-Redirect": "/audio"} if back else {"HX-Trigger": "refreshNotes"}
     return Response(status_code=200, headers=headers)
 
 

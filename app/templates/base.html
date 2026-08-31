@@ -10,18 +10,13 @@
 </head>
 <body>
   <header>
-    <div class="brand">
+    <a href="/" class="brand">
       <span class="logo">🎙️</span>
       <h1>Site Plaud</h1>
-    </div>
-    <p class="tagline">Vos notes vocales, transcrites, résumées et archivées automatiquement.</p>
-    <nav class="pipeline">
-      <span>Upload</span>
-      <span>Transcription</span>
-      <span>Résumé</span>
-      <span>Archivage</span>
-      <span>Email</span>
-    </nav>
+    </a>
+    {% block subhead %}
+      <p class="tagline">Vos notes vocales, transcrites, résumées et archivées automatiquement.</p>
+    {% endblock %}
   </header>
   <main>
     {% block content %}{% endblock %}
