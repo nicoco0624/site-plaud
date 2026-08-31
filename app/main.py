@@ -7,6 +7,7 @@ Comptes email + mot de passe, notes cloisonnées par utilisateur.
 
 import json
 import logging
+import mimetypes
 import shutil
 import uuid
 from contextlib import asynccontextmanager
@@ -79,6 +80,8 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan, docs_url=None, redoc_url=None,
               openapi_url=None)
 _STATIC_DIR = BASE_DIR / "app" / "static"
+# Certaines images de base ne connaissent pas woff2 -> type MIME explicite.
+mimetypes.add_type("font/woff2", ".woff2")
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "app" / "templates")
 
