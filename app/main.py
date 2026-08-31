@@ -5,11 +5,14 @@ Pipeline : upload (fichier ou micro) -> transcription (Groq Whisper) -> résumé
 Comptes email + mot de passe, notes cloisonnées par utilisateur.
 """
 
+import asyncio
 import hmac
 import json
 import logging
 import mimetypes
 import shutil
+import time
+import urllib.request
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -78,7 +81,18 @@ async def lifespan(_: FastAPI):
     settings.upload_path.mkdir(parents=True, exist_ok=True)
     db.init_db()
     slog.info("démarrage (prod=%s, backend=%s)", settings.is_prod, settings.db_backend)
-    yield
+    task = None
+    if settings.public_base_url:  # prod : keep-alive + sauvegarde auto
+        task = asyncio.create_task(_housekeeping())
+    try:
+        yield
+    finally:
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan, docs_url=None, redoc_url=None,
@@ -629,28 +643,80 @@ def account_delete(
 
 
 # --------------------------------------------------------------------------- #
-#  Sauvegarde (appelée par un cron externe avec ?key=…)
+#  Sauvegarde
 # --------------------------------------------------------------------------- #
 
-@app.get("/tasks/backup")
-def tasks_backup(key: str = ""):
-    """Dump JSON (users + notes) vers B2 sous backups/. Désactivé si BACKUP_KEY
-    n'est pas défini. À planifier via un cron externe (cron-job.org)."""
-    if not settings.backup_key or not hmac.compare_digest(key, settings.backup_key):
-        raise HTTPException(status_code=404, detail="Not found")
+def _make_backup() -> dict:
+    """Dump JSON (users + notes + pending) -> B2 sous backups/. Fonction SYNCHRONE
+    (appelée par la route et par la tâche de fond)."""
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     dump = json.dumps(
-        {"ts": ts, "users": db.list_users(), "notes": db.list_all_notes(limit=100000)},
+        {
+            "ts": ts,
+            "users": db.list_users(),
+            "pending_payments": db.list_pending_payments(),
+            "notes": db.list_all_notes(limit=100000),
+        },
         ensure_ascii=False, default=str,
     )
     bkey = f"backups/veyra-{ts}.json"
+    b2.put_text(dump, bkey)
+    slog.info("sauvegarde OK -> %s (%d o)", bkey, len(dump))
+    return {"ok": True, "key": bkey, "bytes": len(dump)}
+
+
+def _last_backup_age_s() -> float | None:
+    """Âge (secondes) de la sauvegarde la plus récente sur B2, None si aucune."""
     try:
-        b2.put_text(dump, bkey)
+        keys = b2.list_keys("backups/")
+    except Exception:  # noqa: BLE001
+        slog.exception("lecture des sauvegardes KO")
+        return None
+    if not keys:
+        return float("inf")
+    newest = max(k["last_modified"] for k in keys)
+    return (datetime.now(timezone.utc) - newest).total_seconds()
+
+
+_BACKUP_EVERY_S = 20 * 3600      # une sauvegarde si la dernière a plus de ~20 h
+_KEEPALIVE_EVERY_S = 600         # auto-ping toutes les 10 min (Render veille à 15)
+
+
+@app.get("/tasks/backup")
+def tasks_backup(key: str = ""):
+    """Sauvegarde à la demande (pour un cron externe). Désactivé si BACKUP_KEY
+    n'est pas défini. La sauvegarde tourne aussi toute seule (voir _housekeeping)."""
+    if not settings.backup_key or not hmac.compare_digest(key, settings.backup_key):
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        return _make_backup()
     except Exception as exc:  # noqa: BLE001
         slog.exception("sauvegarde KO")
         raise HTTPException(status_code=500, detail="backup failed") from exc
-    slog.info("sauvegarde OK -> %s (%d o)", bkey, len(dump))
-    return {"ok": True, "key": bkey, "bytes": len(dump)}
+
+
+async def _housekeeping() -> None:
+    """Tâche de fond : garde le service Render éveillé (auto-ping de sa propre URL
+    publique) et déclenche une sauvegarde quotidienne — sans dépendre d'un cron
+    externe. S'arrête proprement à l'extinction."""
+    base = (settings.public_base_url or "").rstrip("/")
+    await asyncio.sleep(15)  # laisser l'app démarrer
+    while True:
+        if base:
+            try:
+                await asyncio.to_thread(
+                    lambda: urllib.request.urlopen(base + "/healthz", timeout=20).read()
+                )
+            except Exception as exc:  # noqa: BLE001
+                slog.warning("auto-ping KO: %s", exc)
+        if settings.b2_enabled:
+            try:
+                age = await asyncio.to_thread(_last_backup_age_s)
+                if age is not None and age >= _BACKUP_EVERY_S:
+                    await asyncio.to_thread(_make_backup)
+            except Exception:  # noqa: BLE001
+                slog.exception("sauvegarde auto KO")
+        await asyncio.sleep(_KEEPALIVE_EVERY_S)
 
 
 # --------------------------------------------------------------------------- #

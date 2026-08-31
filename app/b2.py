@@ -51,6 +51,24 @@ def put_text(text: str, key: str, content_type: str = "application/json") -> str
     return key
 
 
+def list_keys(prefix: str = "") -> list[dict]:
+    """Liste les objets sous un préfixe : [{key, last_modified, size}, ...]."""
+    s = get_settings()
+    out: list[dict] = []
+    token = None
+    while True:
+        kw = {"Bucket": s.b2_bucket, "Prefix": prefix}
+        if token:
+            kw["ContinuationToken"] = token
+        resp = _client().list_objects_v2(**kw)
+        for o in resp.get("Contents", []):
+            out.append({"key": o["Key"], "last_modified": o["LastModified"],
+                        "size": o["Size"]})
+        if not resp.get("IsTruncated"):
+            return out
+        token = resp.get("NextContinuationToken")
+
+
 def delete(key: str) -> None:
     """Supprime un objet du bucket."""
     s = get_settings()
