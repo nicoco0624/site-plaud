@@ -883,6 +883,12 @@ footer .dot {
   margin: 28px 0 8px;
 }
 .video-sheet .nd-list li::marker { color: var(--fuchsia); }
+.video-emailed {
+  margin: 8px 0 0;
+  font-size: .82rem;
+  color: var(--ok);
+}
+.video-emailed strong { color: var(--ink); }
 
 .vs-concepts { margin: 8px 0 0; }
 .vs-concepts dt {

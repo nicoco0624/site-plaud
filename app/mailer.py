@@ -333,3 +333,55 @@ def send_reset_email(to: str, link: str) -> str:
     text = f"Réinitialise ton mot de passe (valable 1h) : {link}"
     return _dispatch(to, "Réinitialisation de ton mot de passe — Site Plaud",
                      text, _simple_shell("Mot de passe oublié", inner))
+
+
+def send_video_sheet(to: str, video_url: str, video_title: str, sheet: dict) -> str:
+    """Envoie la fiche de révision d'une vidéo + le lien de la vidéo."""
+    F = "-apple-system,Segoe UI,Roboto,Arial,sans-serif"
+    LBL = (f"margin:24px 0 6px;font:700 11px/1 {F};letter-spacing:2px;"
+           "text-transform:uppercase;color:#a855f7;")
+
+    parts = [
+        f'<p style="margin:0 0 4px;"><a href="{escape(video_url)}" '
+        f'style="color:#6d5efc;font-weight:600;">▶ {escape(video_title)}</a></p>'
+    ]
+    for sec in sheet.get("sections") or []:
+        parts.append(f'<p style="{LBL}">{escape(sec.get("titre", ""))}</p>')
+        pts = "".join(
+            f'<li style="margin:5px 0;">{escape(str(p))}</li>'
+            for p in sec.get("points") or []
+        )
+        if pts:
+            parts.append(f'<ul style="margin:0;padding-left:20px;">{pts}</ul>')
+    if sheet.get("concepts"):
+        parts.append(f'<p style="{LBL}">Concepts clés</p>')
+        for c in sheet["concepts"]:
+            parts.append(
+                f'<p style="margin:8px 0 0;"><strong>{escape(c.get("terme",""))}</strong>'
+                f' — {escape(c.get("definition",""))}</p>'
+            )
+    if sheet.get("questions"):
+        parts.append(f'<p style="{LBL}">Questions de révision</p>')
+        qs = "".join(
+            f'<li style="margin:6px 0;">{escape(str(q))}</li>' for q in sheet["questions"]
+        )
+        parts.append(f'<ol style="margin:0;padding-left:20px;">{qs}</ol>')
+
+    html = _simple_shell(sheet.get("titre") or "Fiche de révision", "".join(parts))
+
+    txt = [sheet.get("titre") or "Fiche de révision", "", f"Vidéo : {video_url}", ""]
+    for sec in sheet.get("sections") or []:
+        txt.append(sec.get("titre", "").upper())
+        txt += [f"  - {p}" for p in sec.get("points") or []]
+        txt.append("")
+    if sheet.get("concepts"):
+        txt.append("CONCEPTS CLÉS")
+        txt += [f"  - {c.get('terme','')} : {c.get('definition','')}" for c in sheet["concepts"]]
+        txt.append("")
+    if sheet.get("questions"):
+        txt.append("QUESTIONS DE RÉVISION")
+        txt += [f"  {i}. {q}" for i, q in enumerate(sheet["questions"], 1)]
+    text = "\n".join(txt).strip() + "\n"
+
+    subject = f"🎬 {sheet.get('titre') or 'Fiche de révision'}"
+    return _dispatch(to, subject, text, html)

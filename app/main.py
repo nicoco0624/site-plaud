@@ -519,13 +519,25 @@ def video_generate(
 
     slog.info("video fiche générée url=%s user=%s chars=%d",
               url, user["id"], len(transcript))
+
+    video_url = f"https://www.youtube.com/watch?v={src['video_id']}"
+    emailed = False
+    try:
+        mailer.send_video_sheet(user["email"], video_url, src["title"], sheet)
+        emailed = True
+        slog.info("video fiche envoyée par email user=%s", user["id"])
+    except Exception as exc:  # noqa: BLE001 — l'email est un bonus, pas bloquant
+        slog.warning("email fiche vidéo KO user=%s : %s", user["id"], exc)
+
     return templates.TemplateResponse(
         request, "_video_result.html",
         {
             "sheet": sheet,
             "src": src,
             "truncated": truncated,
-            "video_url": f"https://www.youtube.com/watch?v={src['video_id']}",
+            "video_url": video_url,
+            "emailed": emailed,
+            "email": user["email"],
         },
     )
 

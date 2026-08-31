@@ -10,6 +10,9 @@
       {% if src.duration_s %} · {{ src.duration_s // 60 }} min{% endif %}
       {% if truncated %} · transcription tronquée pour l'analyse{% endif %}
     </p>
+    {% if emailed %}
+      <p class="video-emailed">📧 Copie envoyée à <strong>{{ email }}</strong></p>
+    {% endif %}
 
     {% for sec in sheet.sections %}
       <h2>{{ sec.titre }}</h2>
