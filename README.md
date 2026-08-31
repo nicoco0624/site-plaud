@@ -1,10 +1,13 @@
-# Site Plaud
+# Veyra
 
-Clone auto-hébergé de Plaud : on **upload un audio**, il est **transcrit**,
-**résumé par une IA**, **archivé en ligne**, puis **envoyé par email**.
+*Une nouvelle ère de la voix.*
 
-Pipeline : `upload → transcription → résumé → archivage → email`, entièrement
-en tâches de fond, suivi en direct dans le navigateur.
+Application auto-hébergée : on **upload un audio** (ou on colle un **lien
+YouTube**), c'est **transcrit**, **résumé par une IA**, **archivé en ligne**,
+puis **envoyé par email**.
+
+Pipeline audio : `upload → transcription → résumé → archivage → email`,
+entièrement en tâches de fond, suivi en direct dans le navigateur.
 
 ## Stack (100 % gratuit)
 

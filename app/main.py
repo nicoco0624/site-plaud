@@ -1,4 +1,4 @@
-"""Point d'entrée FastAPI — Site Plaud.
+"""Point d'entrée FastAPI — Veyra.
 
 Pipeline : upload (fichier ou micro) -> transcription (Groq Whisper) -> résumé
 (Groq LLM) -> archivage (Backblaze B2) -> email récapitulatif (Resend / SMTP).
@@ -142,6 +142,8 @@ templates.env.filters["human_size"] = lambda n: _human_size(float(n or 0))
 templates.env.filters["fromjson"] = lambda s: json.loads(s) if s else []
 templates.env.globals["PENDING_STATUSES"] = PENDING_STATUSES
 templates.env.globals["STATUS_LABELS"] = STATUS_LABELS
+templates.env.globals["app_name"] = settings.app_name
+templates.env.globals["app_tagline"] = settings.app_tagline
 
 
 # --------------------------------------------------------------------------- #
@@ -487,7 +489,7 @@ def home(request: Request, user: dict = Depends(require_user)):
 
 @app.get("/audio", response_class=HTMLResponse)
 def audio_app(request: Request, user: dict = Depends(require_user)):
-    """L'app Plaud existante (upload audio, transcription, résumé, notes)."""
+    """L'app historique (upload audio, transcription, résumé, notes)."""
     return templates.TemplateResponse(
         request,
         "index.html",

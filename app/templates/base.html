@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Site Plaud{% endblock %}</title>
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
   <link rel="stylesheet" href="/static/app.css?v={{ asset_version('app.css') }}">
   <script src="/static/htmx.min.js?v={{ asset_version('htmx.min.js') }}" defer></script>
   <script src="/static/app.js?v={{ asset_version('app.js') }}" defer></script>
@@ -17,10 +17,10 @@
           <path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/>
         </svg>
       </span>
-      <h1>Site Plaud</h1>
+      <h1>{{ app_name }}</h1>
     </a>
     {% block subhead %}
-      <p class="tagline">Vos notes vocales, transcrites, résumées et archivées automatiquement.</p>
+      <p class="tagline">{{ app_tagline }}</p>
     {% endblock %}
   </header>
   <main>

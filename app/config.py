@@ -16,7 +16,8 @@ class Settings(BaseSettings):
         env_file=BASE_DIR / ".env", env_file_encoding="utf-8", extra="ignore"
     )
 
-    app_name: str = "Site Plaud"
+    app_name: str = "Veyra"
+    app_tagline: str = "Une nouvelle ère de la voix."
     upload_dir: str = "uploads"
     # sqlite:///chemin  -> fichier local (dev)
     # libsql://xxx.turso.io ou https://xxx.turso.io -> Turso (+ turso_auth_token)
@@ -82,7 +83,7 @@ class Settings(BaseSettings):
     # Google Drive (facultatif, surtout pour un usage local).
     google_client_secret_file: str = "google_client_secret.json"
     google_token_file: str = "token.json"
-    drive_root_folder: str = "Site Plaud"
+    drive_root_folder: str = "Veyra"
 
     # Audio > ce seuil -> MEGA (étape 4b) ; sinon -> backend d'archivage.
     large_file_threshold_mb: int = 50
@@ -121,11 +122,11 @@ class Settings(BaseSettings):
     #  - Resend (API HTTPS) : sans domaine vérifié, n'envoie QUE vers l'adresse
     #    du compte Resend -> inadapté pour envoyer au client.
     #  - SMTP               : bloqué en sortie par Render (tous ports) -> local seulement.
-    mail_from_name: str = "Site Plaud"
+    mail_from_name: str = "Veyra"
     brevo_api_key: str = ""
     brevo_sender: str = ""          # adresse expéditeur vérifiée dans Brevo
     resend_api_key: str = ""
-    resend_from: str = "Site Plaud <onboarding@resend.dev>"
+    resend_from: str = "Veyra <onboarding@resend.dev>"
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_user: str = ""

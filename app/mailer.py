@@ -87,10 +87,10 @@ def download_links(note: dict) -> list[tuple[str, str]]:
 #  Rendu : texte + HTML responsive (identité visuelle du site)
 # --------------------------------------------------------------------------- #
 
-_GRAD = "linear-gradient(115deg,#a855f7 0%,#f038c8 40%,#6d5efc 72%,#22d3ee 100%)"
+_GRAD = "linear-gradient(180deg,#1c1c1f 0%,#141416 100%)"
 _LABEL = ("margin:26px 0 8px;font:700 11px/1 -apple-system,Segoe UI,Roboto,"
           "Arial,sans-serif;letter-spacing:2px;text-transform:uppercase;"
-          "color:#a855f7;")
+          "color:#9a7b1e;")
 
 
 def _plain_text(note: dict, s: dict, transcript: str, links) -> str:
@@ -105,7 +105,7 @@ def _plain_text(note: dict, s: dict, transcript: str, links) -> str:
         out += ["TRANSCRIPTION", transcript, ""]
     if links:
         out += ["FICHIERS"] + [f"  - {n} : {u}" for n, u in links] + [""]
-    out += ["—", f"Traité automatiquement par Site Plaud · {note.get('original_filename', '')}"]
+    out += ["—", f"Traité automatiquement par {get_settings().app_name} · {note.get('original_filename', '')}"]
     return "\n".join(out).strip() + "\n"
 
 
@@ -117,10 +117,10 @@ def _html(note: dict, s: dict, transcript: str, links) -> str:
         rows = ""
         for it in items:
             mark = "☐&nbsp;" if box else (
-                '<span style="color:#f038c8;">•</span>&nbsp;')
+                '<span style="color:#9a7b1e;">•</span>&nbsp;')
             rows += (
                 f'<tr><td style="padding:5px 0;font:400 15px/1.5 -apple-system,'
-                f'Segoe UI,Roboto,Arial,sans-serif;color:#2b2440;">{mark}'
+                f'Segoe UI,Roboto,Arial,sans-serif;color:#2b2721;">{mark}'
                 f'{escape(str(it))}</td></tr>'
             )
         return f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{rows}</table>'
@@ -130,7 +130,7 @@ def _html(note: dict, s: dict, transcript: str, links) -> str:
         parts.append(
             f'<p style="{_LABEL}">Résumé</p>'
             f'<p style="margin:0;font:400 16px/1.6 -apple-system,Segoe UI,Roboto,'
-            f'Arial,sans-serif;color:#241d3b;">{resume}</p>'
+            f'Arial,sans-serif;color:#241f18;">{resume}</p>'
         )
     if s.get("points_cles"):
         parts.append(f'<p style="{_LABEL}">Points clés</p>' + bullets(s["points_cles"]))
@@ -142,12 +142,12 @@ def _html(note: dict, s: dict, transcript: str, links) -> str:
         truncated = len(t) > _TRANSCRIPT_MAX
         body = escape(t[:_TRANSCRIPT_MAX]).replace("\n", "<br>")
         if truncated:
-            body += '<br><span style="color:#8a80a8;">… (tronqué — texte complet dans l\'application)</span>'
+            body += '<br><span style="color:#8a8374;">… (tronqué — texte complet dans l\'application)</span>'
         parts.append(
             f'<p style="{_LABEL}">Transcription</p>'
-            f'<div style="background:#f6f3fd;border:1px solid #eae3fb;border-radius:14px;'
+            f'<div style="background:#faf7ef;border:1px solid #ece3cd;border-radius:14px;'
             f'padding:16px 18px;font:400 14px/1.6 -apple-system,Segoe UI,Roboto,Arial,'
-            f'sans-serif;color:#40384f;">{body}</div>'
+            f'sans-serif;color:#443d30;">{body}</div>'
         )
 
     if links:
@@ -155,7 +155,7 @@ def _html(note: dict, s: dict, transcript: str, links) -> str:
         for n, u in links:
             chips += (
                 f'<a href="{escape(u)}" style="display:inline-block;margin:4px 6px 4px 0;'
-                f'padding:8px 14px;border-radius:999px;background:#f2ecff;color:#6d5efc;'
+                f'padding:8px 14px;border-radius:999px;background:#f7f2e3;color:#8a6d16;'
                 f'font:600 13px/1 -apple-system,Segoe UI,Roboto,Arial,sans-serif;'
                 f'text-decoration:none;">↓ {escape(n)}</a>'
             )
@@ -171,19 +171,19 @@ def _html(note: dict, s: dict, transcript: str, links) -> str:
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         '<meta name="color-scheme" content="light">'
         f"<title>{titre}</title></head>"
-        '<body style="margin:0;padding:0;background:#f1eef9;">'
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1eef9;">'
+        '<body style="margin:0;padding:0;background:#f2f0ea;">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f0ea;">'
         '<tr><td align="center" style="padding:28px 14px;">'
         '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;border-collapse:separate;">'
-        f'<tr><td style="background:#7c3aed;background-image:{_GRAD};border-radius:20px 20px 0 0;padding:34px 30px 30px;">'
-        f'<div style="font:800 12px/1 {F};letter-spacing:3px;color:rgba(255,255,255,.85);">&#127908; SITE PLAUD</div>'
+        f'<tr><td style="background:#161618;background-image:{_GRAD};border-radius:20px 20px 0 0;border-bottom:3px solid #d4af37;padding:34px 30px 30px;">'
+        f'<div style="font:800 12px/1 {F};letter-spacing:4px;color:#d4af37;">{get_settings().app_name.upper()}</div>'
         f'<h1 style="margin:12px 0 0;font:800 24px/1.3 {F};color:#ffffff;">{titre}</h1>'
         '</td></tr>'
-        '<tr><td style="background:#ffffff;border-radius:0 0 20px 20px;padding:26px 30px 30px;box-shadow:0 20px 50px -24px rgba(109,94,252,.5);">'
+        '<tr><td style="background:#ffffff;border-radius:0 0 20px 20px;padding:26px 30px 30px;box-shadow:0 20px 50px -24px rgba(0,0,0,.16);">'
         f'{inner}'
         '</td></tr>'
-        f'<tr><td style="padding:18px 12px 4px;text-align:center;font:400 12px/1.6 {F};color:#9c93bd;">'
-        f'Trait&eacute; automatiquement par Site&nbsp;Plaud &middot; {orig}'
+        f'<tr><td style="padding:18px 12px 4px;text-align:center;font:400 12px/1.6 {F};color:#9a917d;">'
+        f'Trait&eacute; automatiquement par {escape(get_settings().app_name)} &middot; {orig}'
         '</td></tr>'
         '</table></td></tr></table></body></html>'
     )
@@ -215,7 +215,7 @@ def _post_json(url: str, headers: dict, payload: dict) -> None:
     req = urllib.request.Request(
         url, method="POST", data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json", "Accept": "application/json",
-                 "User-Agent": "SitePlaud/1.0", **headers},
+                 "User-Agent": "Veyra/1.0", **headers},
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
@@ -303,14 +303,14 @@ def _simple_shell(title: str, inner: str) -> str:
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         '<meta name="color-scheme" content="light">'
         f"<title>{escape(title)}</title></head>"
-        '<body style="margin:0;padding:0;background:#f1eef9;">'
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1eef9;">'
+        '<body style="margin:0;padding:0;background:#f2f0ea;">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f0ea;">'
         '<tr><td align="center" style="padding:28px 14px;">'
         '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:520px;">'
-        f'<tr><td style="background:#7c3aed;background-image:{_GRAD};border-radius:20px 20px 0 0;padding:30px;">'
-        f'<div style="font:800 12px/1 {F};letter-spacing:3px;color:rgba(255,255,255,.85);">&#127908; SITE PLAUD</div>'
+        f'<tr><td style="background:#161618;background-image:{_GRAD};border-radius:20px 20px 0 0;border-bottom:3px solid #d4af37;padding:30px;">'
+        f'<div style="font:800 12px/1 {F};letter-spacing:4px;color:#d4af37;">{get_settings().app_name.upper()}</div>'
         f'<h1 style="margin:10px 0 0;font:800 22px/1.3 {F};color:#fff;">{escape(title)}</h1></td></tr>'
-        f'<tr><td style="background:#fff;border-radius:0 0 20px 20px;padding:28px 30px;font:400 15px/1.6 {F};color:#2b2440;">'
+        f'<tr><td style="background:#fff;border-radius:0 0 20px 20px;padding:28px 30px;font:400 15px/1.6 {F};color:#2b2721;">'
         f'{inner}</td></tr></table></td></tr></table></body></html>'
     )
 
@@ -319,19 +319,19 @@ def send_reset_email(to: str, link: str) -> str:
     """Envoie le lien de réinitialisation de mot de passe."""
     btn = (
         f'<a href="{escape(link)}" style="display:inline-block;margin:18px 0;'
-        f'padding:13px 26px;border-radius:12px;background:#6d5efc;color:#fff;'
+        f'padding:13px 26px;border-radius:12px;background:#8a6d16;color:#fff;'
         f'font-weight:700;text-decoration:none;">Choisir un nouveau mot de passe</a>'
     )
     inner = (
         "<p>Tu as demandé à réinitialiser ton mot de passe. Ce lien est valable "
         "1 heure&nbsp;:</p>"
         f"{btn}"
-        f'<p style="font-size:13px;color:#8a80a8;word-break:break-all;">{escape(link)}</p>'
-        "<p style=\"font-size:13px;color:#8a80a8;\">Si tu n'es pas à l'origine de "
+        f'<p style="font-size:13px;color:#8a8374;word-break:break-all;">{escape(link)}</p>'
+        "<p style=\"font-size:13px;color:#8a8374;\">Si tu n'es pas à l'origine de "
         "cette demande, ignore cet email.</p>"
     )
     text = f"Réinitialise ton mot de passe (valable 1h) : {link}"
-    return _dispatch(to, "Réinitialisation de ton mot de passe — Site Plaud",
+    return _dispatch(to, f"Réinitialisation de ton mot de passe — {get_settings().app_name}",
                      text, _simple_shell("Mot de passe oublié", inner))
 
 
@@ -339,11 +339,11 @@ def send_video_sheet(to: str, video_url: str, video_title: str, sheet: dict) -> 
     """Envoie la fiche de révision d'une vidéo + le lien de la vidéo."""
     F = "-apple-system,Segoe UI,Roboto,Arial,sans-serif"
     LBL = (f"margin:24px 0 6px;font:700 11px/1 {F};letter-spacing:2px;"
-           "text-transform:uppercase;color:#a855f7;")
+           "text-transform:uppercase;color:#9a7b1e;")
 
     parts = [
         f'<p style="margin:0 0 4px;"><a href="{escape(video_url)}" '
-        f'style="color:#6d5efc;font-weight:600;">▶ {escape(video_title)}</a></p>'
+        f'style="color:#8a6d16;font-weight:600;">▶ {escape(video_title)}</a></p>'
     ]
     for sec in sheet.get("sections") or []:
         parts.append(f'<p style="{LBL}">{escape(sec.get("titre", ""))}</p>')

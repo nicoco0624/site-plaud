@@ -1,9 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Site Plaud — Accueil{% endblock %}
+{% block title %}{{ app_name }} — Accueil{% endblock %}
 {% block subhead %}{% endblock %}
 
 {% block content %}
 <section class="home">
+  <p class="home-kicker">{{ app_tagline.rstrip('.') }}</p>
   <h1 class="home-title">Transforme n'importe quel audio ou vidéo en <em>résumé actionnable</em></h1>
   <p class="home-sub">
     Un fichier à envoyer ou un lien à coller : tu récupères une transcription

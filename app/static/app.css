@@ -1,5 +1,5 @@
 /* ============================================================================
-   Site Plaud — thème « noir / or », direction éditoriale, élégante et sobre.
+   Veyra — thème « noir / or », direction éditoriale, élégante et sobre.
    Titres en serif à contraste (Fraunces, auto-hébergée), corps en sans système,
    micro-labels en mono. L'or est un accent, pas un décor : liens, états actifs,
    filets, chiffres-clés. Peu d'animation, ombres neutres, filets 1px.
@@ -718,6 +718,14 @@ footer .dot {
 
 /* ---------- page d'accueil (choix audio / vidéo) ---------- */
 .home { padding: 24px 0 8px; }
+.home-kicker {
+  margin: 0 0 18px;
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: .28em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
 .home-title {
   margin: 8px 0 0;
   max-width: 20ch;
