@@ -21,6 +21,10 @@ python-dotenv==1.2.3
 # --- Transcription + résumé (Groq) ---
 groq==1.7.0
 
+# --- Résumé Vidéo : récupération des sous-titres YouTube ---
+yt-dlp==2026.8.19
+youtube-transcript-api==1.2.4
+
 # --- Archivage Backblaze B2 (API S3) ---
 boto3==1.43.80
 

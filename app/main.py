@@ -32,7 +32,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app import auth, b2, db, mailer, pipeline, ratelimit, storage
+from app import ai, auth, b2, db, mailer, pipeline, ratelimit, storage, youtube
 from app.config import BASE_DIR, get_settings
 
 logging.basicConfig(
@@ -465,8 +465,69 @@ def audio_app(request: Request, user: dict = Depends(require_user)):
 
 @app.get("/video", response_class=HTMLResponse)
 def video_page(request: Request, user: dict = Depends(require_user)):
-    """Résumé Vidéo — placeholder (fonctionnalité à venir)."""
-    return templates.TemplateResponse(request, "video.html", {"user": user})
+    """Résumé Vidéo : coller un lien YouTube -> fiche de révision."""
+    return templates.TemplateResponse(
+        request, "video.html",
+        {"user": user, "max_minutes": settings.video_max_minutes},
+    )
+
+
+@app.post("/video", response_class=HTMLResponse)
+def video_generate(
+    request: Request, url: str = Form(""), user: dict = Depends(require_user)
+):
+    """Récupère les sous-titres de la vidéo puis génère la fiche via l'IA.
+    Renvoie toujours 200 : le résultat (fiche ou message d'erreur) est swappé
+    dans #video-result par HTMX."""
+    def _err(msg: str):
+        return templates.TemplateResponse(
+            request, "_video_result.html", {"error": msg}
+        )
+
+    if not user.get("is_admin") and not ratelimit.allow(
+        f"video:{user['id']}", settings.video_per_hour, 3600
+    ):
+        return _err("Trop de fiches générées récemment. Réessaie dans un moment.")
+
+    url = url.strip()
+    try:
+        src = youtube.fetch(url, max_minutes=settings.video_max_minutes)
+    except youtube.InvalidURL:
+        return _err("Lien YouTube invalide. Colle l'URL complète d'une vidéo "
+                    "(youtube.com/watch?v=… ou youtu.be/…).")
+    except youtube.NoTranscript:
+        return _err("Cette vidéo n'a pas de sous-titres exploitables "
+                    "(ni manuels, ni automatiques). Essaie une autre vidéo.")
+    except youtube.VideoTooLong as exc:
+        return _err(f"Vidéo trop longue (~{exc.approx_minutes} min). "
+                    f"Limite actuelle : {settings.video_max_minutes} min.")
+    except youtube.FetchError as exc:
+        slog.warning("video fetch KO url=%s : %s", url, exc)
+        return _err("Impossible de récupérer la transcription — YouTube a "
+                    "peut-être bloqué la requête depuis le serveur. Réessaie "
+                    "dans quelques minutes ou essaie une autre vidéo.")
+
+    transcript = src["transcript"]
+    truncated = len(transcript) > settings.video_transcript_max_chars
+    try:
+        sheet = ai.build_study_sheet(
+            src["title"], transcript[: settings.video_transcript_max_chars]
+        )
+    except Exception:  # noqa: BLE001
+        slog.exception("video IA KO url=%s user=%s", url, user["id"])
+        return _err("La génération de la fiche a échoué. Réessaie dans un moment.")
+
+    slog.info("video fiche générée url=%s user=%s chars=%d",
+              url, user["id"], len(transcript))
+    return templates.TemplateResponse(
+        request, "_video_result.html",
+        {
+            "sheet": sheet,
+            "src": src,
+            "truncated": truncated,
+            "video_url": f"https://www.youtube.com/watch?v={src['video_id']}",
+        },
+    )
 
 
 @app.get("/admin", response_class=HTMLResponse)

@@ -5,19 +5,27 @@
 {% endblock %}
 
 {% block content %}
-<p class="back-link"><a href="/">← Accueil</a></p>
+<p class="back-link"><a href="/">← Retour au choix</a></p>
 
-<section class="card video-placeholder">
+<section class="card">
   <h2>Résumé Vidéo</h2>
-  <span class="badge badge-uploaded">bientôt disponible</span>
-  <p class="muted" style="margin-top:14px;">
-    Cette fonctionnalité arrive prochainement : colle l'URL d'une vidéo YouTube
-    et obtiens sa transcription + une fiche de révision (idées clés, plan,
-    points à retenir).
-  </p>
-  <form class="video-form" action="/video" method="get">
-    <input type="url" placeholder="https://www.youtube.com/watch?v=…" disabled>
-    <button type="submit" disabled>Générer la fiche</button>
+  <form id="video-form" class="video-form"
+        hx-post="/video" hx-target="#video-result" hx-swap="innerHTML"
+        hx-disabled-elt="#video-form button" hx-indicator="#video-loading">
+    <input type="url" name="url" required autofocus autocomplete="off"
+           placeholder="https://www.youtube.com/watch?v=…">
+    <button type="submit">Générer la fiche</button>
   </form>
+  <p class="video-hint muted">
+    Vidéos jusqu'à {{ max_minutes }} min, avec sous-titres (manuels ou automatiques,
+    FR ou EN).
+  </p>
+  <div id="video-loading" class="video-loading">
+    <span class="spinner"></span>
+    Récupération de la transcription puis génération de la fiche — ça peut
+    prendre jusqu'à une minute sur une vidéo longue.
+  </div>
 </section>
+
+<div id="video-result"></div>
 {% endblock %}

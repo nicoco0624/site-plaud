@@ -807,31 +807,92 @@ footer .dot {
   .home-cards { grid-template-columns: 1fr; }
 }
 
-/* ---------- placeholder vidéo ---------- */
-.video-placeholder .video-form {
+/* ---------- Résumé Vidéo ---------- */
+.video-form {
   display: flex;
   gap: 10px;
-  margin-top: 18px;
+  margin-top: 4px;
   flex-wrap: wrap;
-  opacity: .55;
 }
-.video-placeholder input {
+.video-form input {
   flex: 1;
   min-width: 220px;
-  padding: 11px 14px;
+  padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid var(--border-strong);
   background: rgba(20, 10, 36, .5);
   color: var(--ink);
   font: inherit;
+  outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
-.video-placeholder button {
+.video-form input:focus {
+  border-color: var(--fuchsia);
+  box-shadow: 0 0 0 3px rgba(240, 56, 200, .18);
+}
+.video-form button {
   font: inherit;
-  font-weight: 650;
+  font-weight: 700;
   color: #fff;
   background: var(--grad);
+  background-size: 200% 100%;
   border: 0;
   border-radius: 12px;
-  padding: 11px 20px;
-  cursor: not-allowed;
+  padding: 12px 22px;
+  cursor: pointer;
+  box-shadow: 0 8px 22px -8px rgba(240, 56, 200, .55);
+  transition: transform .1s ease, background-position .4s ease, filter .15s ease;
 }
+.video-form button:hover { background-position: 100% 0; filter: brightness(1.05); }
+.video-form button:active { transform: translateY(1px); }
+.video-form button:disabled { opacity: .6; cursor: progress; }
+
+.video-hint { margin: 12px 0 0; font-size: .82rem; }
+
+.video-loading {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: .9rem;
+  line-height: 1.5;
+}
+.video-loading.htmx-request { display: flex; }
+.spinner {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--fuchsia);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+
+#video-result:not(:empty) { margin-top: 4px; }
+
+.video-sheet h2 {
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  font-size: 1.06rem;
+  font-weight: 700;
+  color: var(--violet);
+  margin: 28px 0 8px;
+}
+.video-sheet .nd-list li::marker { color: var(--fuchsia); }
+
+.vs-concepts { margin: 8px 0 0; }
+.vs-concepts dt {
+  font-weight: 700;
+  color: var(--ink);
+  margin-top: 12px;
+}
+.vs-concepts dd {
+  margin: 3px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.vs-questions { margin: 8px 0 0; padding-left: 22px; }
+.vs-questions li { margin: 8px 0; line-height: 1.55; }
+.vs-questions li::marker { color: var(--fuchsia); font-family: var(--mono); }

@@ -107,3 +107,71 @@ def summary_to_markdown(s: dict) -> str:
         lines += [f"- [ ] {a}" for a in s["actions"]]
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+# --------------------------------------------------------------------------- #
+#  Fiche de révision à partir d'une transcription de vidéo YouTube
+# --------------------------------------------------------------------------- #
+
+_STUDY_SYSTEM = (
+    "Tu es un assistant pédagogique. À partir de la transcription d'une vidéo "
+    "(fournie par l'utilisateur), tu produis une FICHE DE RÉVISION en français, "
+    "sous forme d'un objet JSON STRICT avec exactement ces clés :\n"
+    '  "titre"    : titre clair de la fiche (max 100 caractères)\n'
+    '  "sections" : tableau de 3 à 7 objets {"titre": str, "points": [str, ...]} '
+    "— chaque section couvre une partie du contenu, 2 à 6 points par section, "
+    "formulés comme des idées à retenir\n"
+    '  "concepts" : tableau de 3 à 10 objets {"terme": str, "definition": str} '
+    "— les notions/définitions importantes du contenu\n"
+    '  "questions": tableau de 3 à 8 questions de révision (chaînes) portant sur '
+    "le contenu, sans les réponses\n"
+    "Ne renvoie que le JSON, sans texte autour, sans bloc de code. "
+    "Si la transcription est trop pauvre pour une fiche, fais au mieux avec "
+    "ce qui est disponible."
+)
+
+
+def build_study_sheet(title: str, transcript: str) -> dict:
+    """Transforme une transcription de vidéo en fiche de révision structurée :
+    {titre, sections:[{titre,points}], concepts:[{terme,definition}], questions}."""
+    settings = get_settings()
+    client = _client()
+
+    user_msg = f"Titre de la vidéo : {title}\n\nTranscription :\n{transcript}"
+    resp = client.chat.completions.create(
+        model=settings.groq_summary_model,
+        messages=[
+            {"role": "system", "content": _STUDY_SYSTEM},
+            {"role": "user", "content": user_msg},
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.2,
+        max_tokens=3200,
+        reasoning_effort="low",
+    )
+    try:
+        data = json.loads(resp.choices[0].message.content or "{}")
+    except json.JSONDecodeError:
+        data = {}
+
+    out: dict = {
+        "titre": re.sub(r"\s+", " ", str(data.get("titre") or title)).strip()[:140]
+                 or "Fiche de révision",
+        "sections": [],
+        "concepts": [],
+        "questions": [],
+    }
+    for sec in data.get("sections") or []:
+        if isinstance(sec, dict):
+            pts = [str(p).strip() for p in (sec.get("points") or []) if str(p).strip()]
+            st = str(sec.get("titre") or "").strip()
+            if st or pts:
+                out["sections"].append({"titre": st or "Section", "points": pts})
+    for c in data.get("concepts") or []:
+        if isinstance(c, dict):
+            terme = str(c.get("terme") or "").strip()
+            deff = str(c.get("definition") or "").strip()
+            if terme and deff:
+                out["concepts"].append({"terme": terme, "definition": deff})
+    out["questions"] = [str(q).strip() for q in (data.get("questions") or []) if str(q).strip()]
+    return out

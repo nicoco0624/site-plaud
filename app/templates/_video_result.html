@@ -1,0 +1,36 @@
+{% if error %}
+  <section class="card"><p class="alert error">{{ error }}</p></section>
+{% elif sheet %}
+  <section class="card video-sheet">
+    <div class="nd-head">
+      <h1 class="nd-title">{{ sheet.titre }}</h1>
+    </div>
+    <p class="nd-meta">
+      <a href="{{ video_url }}" target="_blank" rel="noopener">{{ src.title }}</a>
+      {% if src.duration_s %} · {{ src.duration_s // 60 }} min{% endif %}
+      {% if truncated %} · transcription tronquée pour l'analyse{% endif %}
+    </p>
+
+    {% for sec in sheet.sections %}
+      <h2>{{ sec.titre }}</h2>
+      {% if sec.points %}
+        <ul class="nd-list">{% for p in sec.points %}<li>{{ p }}</li>{% endfor %}</ul>
+      {% endif %}
+    {% endfor %}
+
+    {% if sheet.concepts %}
+      <h2>Concepts clés</h2>
+      <dl class="vs-concepts">
+        {% for c in sheet.concepts %}
+          <dt>{{ c.terme }}</dt>
+          <dd>{{ c.definition }}</dd>
+        {% endfor %}
+      </dl>
+    {% endif %}
+
+    {% if sheet.questions %}
+      <h2>Questions de révision</h2>
+      <ol class="vs-questions">{% for q in sheet.questions %}<li>{{ q }}</li>{% endfor %}</ol>
+    {% endif %}
+  </section>
+{% endif %}

@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     max_notes_per_user: int = 100     # nombre total de notes par utilisateur
     admin_emails: str = ""            # comptes admin, emails séparés par des virgules
 
+    # --- Résumé Vidéo (YouTube) ---
+    video_max_minutes: int = 90              # au-delà : « vidéo trop longue »
+    video_transcript_max_chars: int = 35000  # tronqué avant envoi à l'IA
+    video_per_hour: int = 20                 # garde-fou anti-abus (hors admin)
+
     @property
     def admin_emails_list(self) -> list[str]:
         return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
