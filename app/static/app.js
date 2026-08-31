@@ -1,5 +1,39 @@
-// Scripts de la page d'accueil. Chargés depuis un fichier (pas de JS inline)
-// pour permettre une CSP stricte (script-src 'self').
+// Scripts du site. Chargés depuis un fichier (pas de JS inline) pour permettre
+// une CSP stricte (script-src 'self').
+
+// --- Déconnexion dès qu'on quitte le site (fermeture / changement d'onglet) ---
+// On ne déconnecte PAS pendant une navigation interne (clic sur un lien/bouton,
+// requête HTMX) : un court délai de grâce distingue les deux.
+(function () {
+  if (!document.querySelector('a[href="/logout"]')) return; // pas connecté
+
+  let internalUntil = 0;
+  let loggedOut = false;
+  const markInternal = () => { internalUntil = Date.now() + 1800; };
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest && e.target.closest('a, button')) markInternal();
+  }, true);
+  document.addEventListener('submit', markInternal, true);
+  document.body.addEventListener('htmx:beforeRequest', markInternal);
+
+  const leaving = () => {
+    if (loggedOut || Date.now() < internalUntil) return;
+    loggedOut = true;
+    try { navigator.sendBeacon('/logout'); } catch (e) { /* ignore */ }
+  };
+
+  window.addEventListener('pagehide', leaving);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      leaving();
+    } else if (loggedOut) {
+      window.location.href = '/login';   // retour sur l'onglet -> reconnexion
+    }
+  });
+})();
+
+// --- Scripts spécifiques à la page audio ---
 (function () {
   const form = document.getElementById('upload-form');
   if (!form) return;

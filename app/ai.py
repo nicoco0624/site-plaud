@@ -4,9 +4,49 @@ import json
 import re
 from pathlib import Path
 
+import groq
 from groq import Groq
 
 from app.config import get_settings
+
+
+def _lenient_json(raw: str) -> dict:
+    """Parse un JSON éventuellement mal formé renvoyé par le modèle
+    (doubles accolades, virgules traînantes, bloc ```json)."""
+    s = (raw or "").strip()
+    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s)
+    for candidate in (
+        s,
+        re.sub(r"\}\}(\s*[,\]])", r"}\1", s),                    # }} -> } avant , ou ]
+        re.sub(r",(\s*[}\]])", r"\1",
+               re.sub(r"\}\}(\s*[,\]])", r"}\1", s)),            # + virgules traînantes
+    ):
+        try:
+            out = json.loads(candidate)
+            if isinstance(out, dict):
+                return out
+        except json.JSONDecodeError:
+            continue
+    return {}
+
+
+def _chat_json(client: Groq, **kwargs) -> dict:
+    """Appel chat en mode JSON, tolérant : réessaie une fois, et récupère la
+    tentative du modèle si Groq rejette pour JSON invalide."""
+    for attempt in (1, 2):
+        try:
+            resp = client.chat.completions.create(**kwargs)
+            return _lenient_json(resp.choices[0].message.content or "{}")
+        except groq.BadRequestError as exc:
+            body = getattr(exc, "body", None) or {}
+            failed = (body.get("error") or {}).get("failed_generation")
+            if failed:
+                data = _lenient_json(failed)
+                if data:
+                    return data
+            if attempt == 2:
+                raise
+    return {}
 
 
 class GroqNotConfigured(RuntimeError):
@@ -138,7 +178,8 @@ def build_study_sheet(title: str, transcript: str) -> dict:
     client = _client()
 
     user_msg = f"Titre de la vidéo : {title}\n\nTranscription :\n{transcript}"
-    resp = client.chat.completions.create(
+    data = _chat_json(
+        client,
         model=settings.groq_summary_model,
         messages=[
             {"role": "system", "content": _STUDY_SYSTEM},
@@ -149,10 +190,6 @@ def build_study_sheet(title: str, transcript: str) -> dict:
         max_tokens=3200,
         reasoning_effort="low",
     )
-    try:
-        data = json.loads(resp.choices[0].message.content or "{}")
-    except json.JSONDecodeError:
-        data = {}
 
     out: dict = {
         "titre": re.sub(r"\s+", " ", str(data.get("titre") or title)).strip()[:140]

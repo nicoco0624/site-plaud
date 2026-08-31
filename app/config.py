@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     video_max_minutes: int = 90              # au-delà : « vidéo trop longue »
     video_transcript_max_chars: int = 35000  # tronqué avant envoi à l'IA
     video_per_hour: int = 20                 # garde-fou anti-abus (hors admin)
+    # API tierce pour les sous-titres (YouTube bloque les datacenters).
+    supadata_api_key: str = ""
 
     @property
     def admin_emails_list(self) -> list[str]:

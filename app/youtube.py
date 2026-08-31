@@ -16,6 +16,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from app.config import get_settings
+
 _ID_RE = re.compile(
     r"(?:v=|/shorts/|/embed/|/live/|youtu\.be/)([A-Za-z0-9_-]{11})"
 )
@@ -59,6 +61,40 @@ def _oembed_title(url: str) -> str | None:
             return json.load(r).get("title")
     except Exception:  # noqa: BLE001
         return None
+
+
+# --------------------------------------------------------------------------- #
+#  Méthode 0 : Supadata (API tierce) — indispensable en prod car YouTube bloque
+#  les requêtes directes depuis les IP de datacenter (Render).
+# --------------------------------------------------------------------------- #
+
+def _via_supadata(url: str, api_key: str) -> str:
+    endpoint = ("https://api.supadata.ai/v1/transcript?text=true&url="
+                + urllib.parse.quote(url, safe=""))
+    req = urllib.request.Request(endpoint, headers={"x-api-key": api_key})
+    try:
+        with urllib.request.urlopen(req, timeout=45) as r:
+            data = json.load(r)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")
+        low = body.lower()
+        if exc.code in (404, 422) or "no transcript" in low or "not found" in low:
+            raise NoTranscript() from exc
+        if exc.code in (401, 403):
+            raise FetchError("clé Supadata invalide") from exc
+        raise FetchError(f"Supadata HTTP {exc.code} : {body[:200]}") from exc
+    except urllib.error.URLError as exc:
+        raise FetchError(f"Supadata injoignable : {exc.reason}") from exc
+
+    content = data.get("content")
+    if isinstance(content, list):
+        content = " ".join(
+            seg.get("text", "") for seg in content if isinstance(seg, dict)
+        )
+    text = re.sub(r"\s+", " ", str(content or "")).strip()
+    if len(text) < 40:
+        raise NoTranscript()
+    return text
 
 
 # --------------------------------------------------------------------------- #
@@ -189,14 +225,23 @@ def fetch(url: str, max_minutes: int = 90) -> dict:
 
     title = _oembed_title(url) or "Vidéo YouTube"
     transcript, dur = "", 0
+    key = get_settings().supadata_api_key
 
-    # 1) transcript-api
-    try:
-        transcript = _via_transcript_api(vid)
-    except (NoTranscript, FetchError):
-        pass
-    except InvalidURL:
-        raise
+    # 0) Supadata (si configuré) — seule méthode qui passe depuis un datacenter
+    if key:
+        try:
+            transcript = _via_supadata(url, key)
+        except (NoTranscript, FetchError):
+            pass
+
+    # 1) youtube-transcript-api
+    if len(transcript) < 40:
+        try:
+            transcript = _via_transcript_api(vid)
+        except (NoTranscript, FetchError):
+            pass
+        except InvalidURL:
+            raise
 
     # 2) yt-dlp (fallback, ou pour la durée)
     if len(transcript) < 40:
