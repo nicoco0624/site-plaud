@@ -904,3 +904,40 @@ footer .dot {
 .vs-questions { margin: 8px 0 0; padding-left: 22px; }
 .vs-questions li { margin: 8px 0; line-height: 1.55; }
 .vs-questions li::marker { color: var(--fuchsia); font-family: var(--mono); }
+
+/* ---------- transitions de page ---------- */
+
+/* Crossfade natif entre les pages (arrivée sur le site, login -> page de choix).
+   Progressive enhancement : ignoré par les navigateurs qui ne le gèrent pas. */
+@view-transition { navigation: auto; }
+
+::view-transition-old(root),
+::view-transition-new(root) { animation-duration: .38s; }
+
+/* Animation d'entrée du contenu (fallback + effet "arrivée"). */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+header { animation: fade-enter .5s ease both; }
+main   { animation: page-enter .55s cubic-bezier(.2, .7, .2, 1) both; }
+
+/* Les deux grandes cartes de la page de choix arrivent en décalé. */
+.home-cards a { animation: page-enter .55s cubic-bezier(.2, .7, .2, 1) both; }
+.home-cards a:first-of-type { animation-delay: .10s; }
+.home-cards a:last-of-type  { animation-delay: .18s; }
+
+/* Le résultat vidéo (swap HTMX) apparaît en douceur. */
+#video-result > * { animation: page-enter .4s cubic-bezier(.2, .7, .2, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  header, main, .home-cards a, #video-result > * { animation: none; }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) { animation: none !important; }
+}
