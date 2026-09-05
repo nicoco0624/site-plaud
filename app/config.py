@@ -35,6 +35,17 @@ class Settings(BaseSettings):
     # externe). Vide -> endpoint désactivé (404).
     backup_key: str = ""
 
+    # --- Anti-bot à l'inscription ---
+    # reCAPTCHA v3 (Google) : vides -> vérification désactivée (n'empêche pas
+    # l'inscription tant que les clés ne sont pas renseignées).
+    recaptcha_site_key: str = ""
+    recaptcha_secret_key: str = ""
+    recaptcha_min_score: float = 0.5
+
+    @property
+    def recaptcha_enabled(self) -> bool:
+        return bool(self.recaptcha_site_key and self.recaptcha_secret_key)
+
     # --- Essais gratuits / abonnement ---
     free_audio: int = 1              # résumés audio gratuits par compte
     free_video: int = 1             # fiches vidéo gratuites par compte

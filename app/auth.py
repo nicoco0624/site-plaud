@@ -13,7 +13,7 @@ import time
 from app.config import get_settings
 
 PW_RESET_TTL = 3600  # secondes de validité d'un lien de réinitialisation
-EMAIL_VERIFY_TTL = 7 * 24 * 3600  # 7 jours pour confirmer son adresse
+EMAIL_VERIFY_TTL = 24 * 3600  # 24 h pour confirmer son adresse (double opt-in)
 
 _PBKDF2_ROUNDS = 300_000
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

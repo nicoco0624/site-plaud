@@ -39,7 +39,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app import (
-    ai, auth, b2, db, gumroad, mailer, pipeline, ratelimit, storage, youtube,
+    ai, auth, b2, db, gumroad, mailer, pipeline, ratelimit, recaptcha, storage,
+    youtube,
 )
 from app.config import BASE_DIR, get_settings
 
@@ -116,6 +117,24 @@ _CSP = (
     # lecteur audio de la page détail : la piste est servie via /notes/{id}/dl/…
     # qui redirige (302) vers une URL B2 signée.
     "media-src 'self' https://*.backblazeb2.com; "
+    "form-action 'self'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'; "
+    "object-src 'none'"
+)
+
+# CSP relâchée UNIQUEMENT sur /register, et seulement si reCAPTCHA est
+# configuré : nécessaire pour charger le script Google, son iframe invisible
+# et ses appels réseau. Le reste du site garde la CSP stricte ci-dessus.
+_CSP_RECAPTCHA = (
+    "default-src 'self'; "
+    "script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: https://www.gstatic.com; "
+    "font-src 'self'; "
+    "connect-src 'self' https://www.google.com/recaptcha/; "
+    "frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; "
+    "media-src 'self'; "
     "form-action 'self'; "
     "base-uri 'self'; "
     "frame-ancestors 'none'; "
@@ -269,7 +288,12 @@ async def _auth_gate(request: Request, call_next):
 @app.middleware("http")
 async def _security_headers(request: Request, call_next):
     resp = await call_next(request)
-    resp.headers.setdefault("Content-Security-Policy", _CSP)
+    csp = (
+        _CSP_RECAPTCHA
+        if request.url.path == "/register" and settings.recaptcha_enabled
+        else _CSP
+    )
+    resp.headers.setdefault("Content-Security-Policy", csp)
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("X-Frame-Options", "DENY")
     resp.headers.setdefault("Referrer-Policy", "same-origin")
@@ -440,11 +464,15 @@ def reset_submit(
     return resp
 
 
+def _register_ctx(error: str | None) -> dict:
+    return {"error": error, "recaptcha_site_key": settings.recaptcha_site_key or None}
+
+
 @app.get("/register", response_class=HTMLResponse)
 def register_form(request: Request):
     if _current_user(request):
         return RedirectResponse("/", status_code=303)
-    return templates.TemplateResponse(request, "register.html", {"error": None})
+    return templates.TemplateResponse(request, "register.html", _register_ctx(None))
 
 
 @app.post("/register")
@@ -453,14 +481,31 @@ def register_submit(
     email: str = Form(""),
     password: str = Form(""),
     password2: str = Form(""),
+    phone_number: str = Form(""),   # champ piège (honeypot) : doit rester vide
+    recaptcha_token: str = Form(""),
 ):
     ip = _client_ip(request)
+
+    # Honeypot : un humain ne voit/remplit jamais ce champ. On répond comme si
+    # l'inscription avait réussi, sans rien créer ni révéler que c'est un piège.
+    if phone_number.strip():
+        slog.warning("register honeypot déclenché ip=%s", ip)
+        return RedirectResponse("/verify", status_code=303)
+
     if not ratelimit.allow(f"register-ip:{ip}", 5, 3600):
         slog.warning("register rate-limit ip=%s", ip)
         return templates.TemplateResponse(
             request, "register.html",
-            {"error": "Trop d'inscriptions depuis cette adresse. Réessaie plus tard."},
+            {**_register_ctx("Trop d'inscriptions depuis cette adresse. Réessaie plus tard.")},
             status_code=429,
+        )
+
+    if not recaptcha.verify(recaptcha_token, remote_ip=ip, expected_action="register"):
+        slog.warning("register reCAPTCHA refusé ip=%s", ip)
+        return templates.TemplateResponse(
+            request, "register.html",
+            _register_ctx("Vérification anti-robot échouée. Réessaie."),
+            status_code=400,
         )
 
     email = email.strip().lower()
@@ -476,7 +521,7 @@ def register_submit(
         err = "Un compte existe déjà avec cette adresse."
     if err:
         return templates.TemplateResponse(
-            request, "register.html", {"error": err}, status_code=400
+            request, "register.html", _register_ctx(err), status_code=400
         )
 
     user = db.create_user(
@@ -678,7 +723,28 @@ def _last_backup_age_s() -> float | None:
     return (datetime.now(timezone.utc) - newest).total_seconds()
 
 
+def _cleanup_unverified() -> int:
+    """Double opt-in : supprime les comptes jamais confirmés créés il y a plus de
+    48h (avec leurs éventuelles notes/fichiers B2). Renvoie le nombre supprimé."""
+    stale = db.list_unverified_older_than(48)
+    for u in stale:
+        for note in db.list_notes(u["id"], limit=10000):
+            for entry in json.loads(note.get("archive_links") or "[]"):
+                if entry.get("provider") == "b2" and entry.get("key"):
+                    try:
+                        b2.delete(entry["key"])
+                    except Exception:  # noqa: BLE001
+                        slog.warning("échec suppression B2 key=%s", entry["key"])
+            local = _resolve_inside(str(Path(note["stored_path"]).parent))
+            if local and local.is_dir() and local != BASE_DIR.resolve():
+                shutil.rmtree(local, ignore_errors=True)
+        db.delete_user(u["id"])
+        slog.info("nettoyage inscription non confirmée (>48h) : %s", u["email"])
+    return len(stale)
+
+
 _BACKUP_EVERY_S = 20 * 3600      # une sauvegarde si la dernière a plus de ~20 h
+_CLEANUP_EVERY_S = 3600          # vérifie les inscriptions non confirmées 1x/heure
 _KEEPALIVE_EVERY_S = 600         # auto-ping toutes les 10 min (Render veille à 15)
 
 
@@ -700,6 +766,7 @@ async def _housekeeping() -> None:
     publique) et déclenche une sauvegarde quotidienne — sans dépendre d'un cron
     externe. S'arrête proprement à l'extinction."""
     base = (settings.public_base_url or "").rstrip("/")
+    last_cleanup = 0.0
     await asyncio.sleep(15)  # laisser l'app démarrer
     while True:
         if base:
@@ -716,6 +783,14 @@ async def _housekeeping() -> None:
                     await asyncio.to_thread(_make_backup)
             except Exception:  # noqa: BLE001
                 slog.exception("sauvegarde auto KO")
+        if time.time() - last_cleanup >= _CLEANUP_EVERY_S:
+            try:
+                n = await asyncio.to_thread(_cleanup_unverified)
+                if n:
+                    slog.info("nettoyage auto : %d inscription(s) non confirmée(s) supprimée(s)", n)
+            except Exception:  # noqa: BLE001
+                slog.exception("nettoyage inscriptions non confirmées KO")
+            last_cleanup = time.time()
         await asyncio.sleep(_KEEPALIVE_EVERY_S)
 
 

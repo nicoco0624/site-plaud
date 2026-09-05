@@ -495,6 +495,19 @@ footer .dot {
 .auth-form button[type="submit"] { justify-self: stretch; text-align: center; }
 .auth-switch { margin: 16px 0 0; font-size: .86rem; color: var(--muted); }
 
+/* Champ piège anti-robot : présent dans le HTML, invisible pour un humain
+   (hors-écran plutôt que display:none, moins facilement détecté par un bot). */
+.hp-field {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* ---------- bandeau « confirme ton email » ---------- */
 .verify-bar {
   max-width: var(--measure);

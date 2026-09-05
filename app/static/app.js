@@ -137,3 +137,30 @@
     if (rec && rec.state === 'recording') rec.stop();
   });
 })();
+
+// --- reCAPTCHA v3 (invisible) sur le formulaire d'inscription ---
+// Génère un jeton juste avant l'envoi et l'attache à un champ caché ; le score
+// est vérifié côté serveur. Si le script Google est indisponible, on laisse
+// quand même partir le formulaire (le serveur retombe sur son propre filet).
+(function () {
+  const form = document.getElementById('register-form');
+  if (!form) return;
+  const siteKey = form.dataset.recaptchaSitekey;
+  if (!siteKey) return; // reCAPTCHA pas configuré (clés absentes) : rien à faire
+
+  form.addEventListener('submit', (e) => {
+    if (form.dataset.recaptchaDone === '1') return; // jeton déjà attaché, on laisse partir
+    e.preventDefault();
+    if (typeof grecaptcha === 'undefined') { form.submit(); return; }
+    grecaptcha.ready(() => {
+      grecaptcha.execute(siteKey, { action: 'register' })
+        .then((token) => {
+          const field = document.getElementById('recaptcha-token');
+          if (field) field.value = token;
+          form.dataset.recaptchaDone = '1';
+          form.submit();
+        })
+        .catch(() => { form.dataset.recaptchaDone = '1'; form.submit(); });
+    });
+  });
+})();

@@ -37,5 +37,6 @@
     <span>Traitement 100&nbsp;% automatique — propulsé par Whisper &amp; un LLM</span>
     {% if user %}<span class="user-chip">{{ user.email }} · <a class="logout-link" href="/account">mon compte</a> · <a class="logout-link" href="/logout">déconnexion</a></span>{% endif %}
   </footer>
+  {% block extra_scripts %}{% endblock %}
 </body>
 </html>

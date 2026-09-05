@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 
@@ -303,6 +303,17 @@ def delete_user(user_id: str) -> None:
     Le nettoyage des fichiers B2 est fait par l'appelant, à partir de list_notes."""
     _q("DELETE FROM notes WHERE user_id = ?", (user_id,))
     _q("DELETE FROM users WHERE id = ?", (user_id,))
+
+
+def list_unverified_older_than(hours: int) -> list[dict]:
+    """Comptes jamais confirmés (double opt-in), ni admin ni abonnés, créés il y
+    a plus de `hours` heures — candidats au nettoyage automatique."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="seconds")
+    return _q(
+        "SELECT * FROM users WHERE email_verified = 0 AND is_admin = 0 "
+        "AND subscribed = 0 AND created_at < ?",
+        (cutoff,),
+    )
 
 
 def list_users() -> list[dict]:
